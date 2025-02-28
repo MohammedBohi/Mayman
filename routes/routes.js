@@ -1,10 +1,7 @@
 require('dotenv').config();
-if (!process.env.STRIPE_SECRET_KEY) {
-    console.error("❌ STRIPE_SECRET_KEY non définie !");
-    process.exit(1); // Arrête le serveur si la clé est absente
-}
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
-console.log(stripe); // Vérifie que la bibliothèque Stripe est bien initialisée
+const Stripe = require('stripe');
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY); // Assure-toi que la clé Stripe est bien dans ton fichier .env
+
 
 const express = require('express');
 const router = express.Router();
