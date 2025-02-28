@@ -573,8 +573,8 @@ router.post('/paiement/initier', authenticateUser, async (req, res) => {
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
             mode: 'payment',
-            success_url: `http://localhost:8081/success?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `http://localhost:8081/cancel`,
+            success_url: `https://maylissman.netlify.app/success?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `https://maylissman.netlify.app/cancel`,
             customer_email: req.user.email, // Email de l'utilisateur
             line_items: [
                 {
