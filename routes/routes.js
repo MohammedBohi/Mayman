@@ -1,4 +1,10 @@
 require('dotenv').config();
+console.log("📡 Envoi de la clé à Stripe:", process.env.STRIPE_SECRET_KEY);
+if (!process.env.STRIPE_SECRET_KEY) {
+    console.error("❌ STRIPE_SECRET_KEY non définie !");
+    process.exit(1); // Arrête le serveur si la clé est absente
+}
+
 const express = require('express');
 const router = express.Router();
 router.use((req, res, next) => {
@@ -7,7 +13,6 @@ router.use((req, res, next) => {
 
 
 const nodemailer = require('nodemailer');
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const db = require('../db');
 
 const { authenticateUser } = require('../middlewares/auth'); // Importer le middleware
