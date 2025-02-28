@@ -5,12 +5,6 @@ const routes = require("./routes/routes"); // Assurez-vous que le chemin est cor
 
 // Charger les variables d'environnement
 dotenv.config();
-console.log("🔍 VARIABLES D'ENVIRONNEMENT:");
-console.log("DATABASE_URL:", process.env.DATABASE_URL ? "✅ OK" : "❌ ABSENTE");
-console.log("STRIPE_SECRET_KEY:", process.env.STRIPE_SECRET_KEY ? "✅ OK" : "❌ ABSENTE");
-console.log("FRONTEND_URL:", process.env.FRONTEND_URL ? "✅ OK" : "❌ ABSENTE");
-console.log("JWT_SECRET:", process.env.JWT_SECRET ? "✅ OK" : "❌ ABSENTE");
-console.log("EMAIL_USER:", process.env.EMAIL_USER ? "✅ OK" : "❌ ABSENTE");
 
 
 // Création de l'application Express

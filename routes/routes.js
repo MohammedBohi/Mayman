@@ -1,5 +1,4 @@
 require('dotenv').config();
-console.log("📡 Envoi de la clé à Stripe:", process.env.STRIPE_SECRET_KEY);
 if (!process.env.STRIPE_SECRET_KEY) {
     console.error("❌ STRIPE_SECRET_KEY non définie !");
     process.exit(1); // Arrête le serveur si la clé est absente
