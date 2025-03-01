@@ -193,12 +193,18 @@ router.post('/reservations', authenticateUser, async (req, res) => {
                 pass: process.env.EMAIL_PASS
             }
         });
+        const formattedDate = dateLocale.toLocaleDateString("fr-FR", {
+            weekday: "long",
+            day: "2-digit",
+            month: "long",
+            year: "numeric"
+          });
 
         const emailUtilisateur = {
             from: process.env.EMAIL_USER,
             to: req.user.email, 
             subject: '✔️ Confirmation de votre réservation',
-            text: `Bonjour ${nom} ${prenom},\n\nVotre réservation a bien été enregistrée ! 🎉\n\n📌 Détails :\n- 🏷 Prestation : ${prestation}\n- 💰 Tarif : ${tarif}€\n- 📅 Date : ${jour}\n- ⏰ Créneau : ${creneau}\n- 📍 Adresse : ${adresseReservation}\n- 💳 Paiement : ${typePaiement} (en espèce) \n\nMerci pour votre confiance !\n⚠️ En cas d'empêchement ou si vous souhaitez modifier votre rendez-vous, veuillez nous en informer le plus tôt possible.\n\n
+            text: `Bonjour ${nom} ${prenom},\n\nVotre réservation a bien été enregistrée ! 🎉\n\n📌 Détails :\n- 🏷 Prestation : ${prestation}\n- 💰 Tarif : ${tarif}€\n- 📅 Date : ${formattedDate}\n- ⏰ Créneau : ${creneau}\n- 📍 Adresse : ${adresseReservation}\n- 💳 Paiement : ${typePaiement} (en espèce) \n\nMerci pour votre confiance !\n⚠️ En cas d'empêchement ou si vous souhaitez modifier votre rendez-vous, veuillez nous en informer le plus tôt possible.\n\n
 📞 Numéro de téléphone : +33 7 68 44 16 10\n
 📧 Adresse e-mail : mayliss.mazet24@gmail.com\n\n
 Merci pour votre confiance !\n
@@ -206,12 +212,13 @@ L'équipe May'Man.`
         };
 
         await transporter.sendMail(emailUtilisateur);
+        
 
         const emailAdmin = {
             from: process.env.EMAIL_USER,
             to: 'mayliss.mazet24@gmail.com', 
             subject: ' Nouvelle réservation',
-            text: `📢 Une nouvelle réservation a été effectuée :\n\n- 👤 Client : ${nom} ${prenom}\n- 🏷 Prestation : ${prestation}\n- 💰 Tarif : ${tarif}€\n- 📅 Date : ${jour}\n- ⏰ Créneau : ${creneau}\n- 📍 Adresse : ${adresseReservation}\n- 📞 Téléphone : ${telephone}\n- 💳 Paiement : ${typePaiement}\n- 📌 Département : ${departement}\n\n📌 Vérifiez votre tableau de bord.`
+            text: `📢 Une nouvelle réservation a été effectuée :\n\n- 👤 Client : ${nom} ${prenom}\n- 🏷 Prestation : ${prestation}\n- 💰 Tarif : ${tarif}€\n- 📅 Date : ${formattedDate}\n- ⏰ Créneau : ${creneau}\n- 📍 Adresse : ${adresseReservation}\n- 📞 Téléphone : ${telephone}\n- 💳 Paiement : ${typePaiement}\n- 📌 Département : ${departement}\n\n📌 Vérifiez votre tableau de bord.`
         };
 
         await transporter.sendMail(emailAdmin);
@@ -357,8 +364,12 @@ router.delete('/reservations/:id', authenticateUser, checkRole(['Client']), asyn
         }
 
         // **Formater la date proprement**
-        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-        const formattedDate = new Date(reservationDetails.jour).toLocaleDateString('fr-FR', options);
+        const formattedDate = dateLocale.toLocaleDateString("fr-FR", {
+            weekday: "long",
+            day: "2-digit",
+            month: "long",
+            year: "numeric"
+          });
 
         // Supprimer la réservation
         await db.query('DELETE FROM reservation WHERE id = $1', [id]);
@@ -465,7 +476,12 @@ router.delete('/admin/reservations/:id', authenticateUser, checkRole(['Admin']),
 
         // **Formater la date proprement**
         const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-        const formattedDate = new Date(reservationDetails.jour).toLocaleDateString('fr-FR', options);
+        const formattedDate = dateLocale.toLocaleDateString("fr-FR", {
+            weekday: "long",
+            day: "2-digit",
+            month: "long",
+            year: "numeric"
+          });
 
         // Supprimer la réservation
         await db.query('DELETE FROM reservation WHERE id = $1', [id]);
@@ -478,6 +494,7 @@ router.delete('/admin/reservations/:id', authenticateUser, checkRole(['Admin']),
                 pass: process.env.EMAIL_PASS
             }
         });
+       
 
         // **Email au client**
         const emailClient = {
@@ -644,7 +661,16 @@ router.get('/paiement/statut/:sessionId', authenticateUser, async (req, res) => 
         const prenom = session.metadata.prenom || "Inconnu";
         const prestation = session.metadata.prestation || "Inconnue";
         const tarif = session.metadata.tarif || 0;
-        const jour = session.metadata.jour || null;
+        const dateUTC = new Date(jourUTC);
+
+        // 🔹 Convertir UTC en heure locale
+        const offset = new Date().getTimezoneOffset(); // Décalage horaire en minutes
+        const dateLocale = new Date(dateUTC.getTime() - offset * 60000); // Correction du décalage
+        
+        const jour = dateLocale.toISOString().split("T")[0]; // Format final YYYY-MM-DD
+        console.log("✅ Date après conversion en locale :", jour);
+        
+        // Force en format YYYY-MM-DD
         const creneau = session.metadata.creneau || null;
         const adresseReservation = session.metadata.adresseReservation || "Non spécifiée";
         const telephone = session.metadata.telephone || "Non fourni";
@@ -692,7 +718,14 @@ router.get('/paiement/statut/:sessionId', authenticateUser, async (req, res) => 
                 pass: process.env.EMAIL_PASS
             }
         });
+        const formattedDate = dateLocale.toLocaleDateString("fr-FR", {
+            weekday: "long",
+            day: "2-digit",
+            month: "long",
+            year: "numeric"
+          });
 
+        
         // ✅ Envoi d'email de confirmation au client
         if (!clientEmail) {
             console.error("❌ ERREUR : L'email du client est introuvable !");
@@ -702,7 +735,7 @@ router.get('/paiement/statut/:sessionId', authenticateUser, async (req, res) => 
                     from: process.env.EMAIL_USER,
                     to: clientEmail,
                     subject: '✔️ Confirmation de votre réservation',
-                    text: `Bonjour ${nom} ${prenom},\n\nVotre réservation a bien été enregistrée après votre paiement en ligne ! 🎉\n\n📌 Détails :\n- 🏷 Prestation : ${prestation}\n- 💰 Tarif : ${tarif}€\n- 📅 Date : ${jour}\n- ⏰ Créneau : ${creneau}\n- 📍 Adresse : ${adresseReservation}\n- 💳 Paiement : En ligne\n\n⚠️ En cas d'empêchement ou si vous souhaitez modifier votre rendez-vous, veuillez nous en informer le plus tôt possible.\n\n
+                    text: `Bonjour ${nom} ${prenom},\n\nVotre réservation a bien été enregistrée après votre paiement en ligne ! 🎉\n\n📌 Détails :\n- 🏷 Prestation : ${prestation}\n- 💰 Tarif : ${tarif}€\n- 📅 Date : ${formattedDate}\n- ⏰ Créneau : ${creneau}\n- 📍 Adresse : ${adresseReservation}\n- 💳 Paiement : En ligne\n\n⚠️ En cas d'empêchement ou si vous souhaitez modifier votre rendez-vous, veuillez nous en informer le plus tôt possible.\n\n
 📞 Numéro de téléphone : +33 7 68 44 16 10\n
 📧 Adresse e-mail : mayliss.mazet24@gmail.com\n\n
 Merci pour votre confiance !\n
@@ -713,14 +746,14 @@ L'équipe May'Man.`
                 console.error("❌ Erreur lors de l'envoi de l'email client :", error);
             }
         }
-
+     
         // ✅ Envoi d'email à l'admin (coiffeuse)
         try {
             const emailAdmin = {
                 from: process.env.EMAIL_USER,
                 to: 'mayliss.mazet24@gmail.com', // 🔥 Remplace par l'email de l'admin si besoin
                 subject: '⚡ Nouvelle réservation après paiement en ligne',
-                text: `📢 Une nouvelle réservation a été validée après paiement :\n\n- 👤 Client : ${nom} ${prenom}\n- 🏷 Prestation : ${prestation}\n- 💰 Tarif : ${tarif}€\n- 📅 Date : ${jour}\n- ⏰ Créneau : ${creneau}\n- 📍 Adresse : ${adresseReservation}\n- 📞 Téléphone : ${telephone}\n- 💳 Paiement : En ligne\n- 📌 Département :${departement}`
+                text: `📢 Une nouvelle réservation a été validée après paiement :\n\n- 👤 Client : ${nom} ${prenom}\n- 🏷 Prestation : ${prestation}\n- 💰 Tarif : ${tarif}€\n- 📅 Date : ${formattedDate}\n- ⏰ Créneau : ${creneau}\n- 📍 Adresse : ${adresseReservation}\n- 📞 Téléphone : ${telephone}\n- 💳 Paiement : En ligne\n- 📌 Département :${departement}`
             };
             await transporter.sendMail(emailAdmin);
         } catch (error) {
