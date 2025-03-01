@@ -564,9 +564,7 @@ router.post('/paiement/initier', authenticateUser, async (req, res) => {
             return res.status(500).json({ error: "Problème de connexion avec Stripe." });
         }
        ;
-        
-
-
+    
 
         // ✅ Création de la session Stripe Checkout
         const session = await stripe.checkout.sessions.create({
@@ -658,6 +656,10 @@ router.get('/paiement/statut/:sessionId', authenticateUser, async (req, res) => 
             console.error("❌ ERREUR : Données essentielles manquantes !");
             return res.status(500).json({ error: "Données essentielles manquantes pour créer la réservation." });
         }
+        console.log("📥 Date récupérée depuis Stripe :", jour);
+        console.log("🕒 Conversion en locale :", new Date(jour).toLocaleString());
+        console.log("🔄 Conversion en UTC :", new Date(jour).toISOString());
+        
 
         // ✅ Vérifier que la réservation n'existe pas déjà
         if (!session || !["paid", "complete"].includes(session.payment_status)) {
