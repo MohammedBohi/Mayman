@@ -668,7 +668,7 @@ router.get('/paiement/statut/:sessionId', authenticateUser, async (req, res) => 
         const prenom = session.metadata.prenom || "Inconnu";
         const prestation = session.metadata.prestation || "Inconnue";
         const tarif = session.metadata.tarif || 0;
-        const dateUTC = new Date(jourUTC);
+        const dateUTC = new Date(session.metadata.jour); // Récupération correcte
 
         // 🔹 Convertir UTC en heure locale
         const offset = new Date().getTimezoneOffset(); // Décalage horaire en minutes
