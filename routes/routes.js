@@ -184,7 +184,9 @@ router.post('/reservations', authenticateUser, async (req, res) => {
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING *`,
             [utilisateurId, nom, prenom, prestation, tarif, jour, creneau, adresseReservation, telephone, typePaiement, departement]
         );
-
+        const dateUTC = new Date(jour); // Convertir `jour` venant de la requête en objet Date
+        const offset = new Date().getTimezoneOffset(); // Décalage horaire en minutes
+        const dateLocale = new Date(dateUTC.getTime() - offset * 60000);
         // ✅ Configuration du service de messagerie
         const transporter = nodemailer.createTransport({
             service: 'gmail',
@@ -352,6 +354,9 @@ router.delete('/reservations/:id', authenticateUser, checkRole(['Client']), asyn
         }
 
         const reservationDetails = reservation.rows[0];
+        const dateUTC = new Date(reservationDetails.jour);
+        const offset = new Date().getTimezoneOffset();
+        const dateLocale = new Date(dateUTC.getTime() - offset * 60000);
 
         const clientEmail = reservationDetails.clientemail;
         const clientNom = reservationDetails.clientnom;
@@ -463,6 +468,9 @@ router.delete('/admin/reservations/:id', authenticateUser, checkRole(['Admin']),
         }
 
         const reservationDetails = reservation.rows[0];
+        const dateUTC = new Date(reservationDetails.jour);
+        const offset = new Date().getTimezoneOffset();
+        const dateLocale = new Date(dateUTC.getTime() - offset * 60000);
 
         const clientEmail = reservationDetails.clientemail;
         const clientNom = reservationDetails.clientnom;
@@ -475,7 +483,6 @@ router.delete('/admin/reservations/:id', authenticateUser, checkRole(['Admin']),
         }
 
         // **Formater la date proprement**
-        const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
         const formattedDate = dateLocale.toLocaleDateString("fr-FR", {
             weekday: "long",
             day: "2-digit",
