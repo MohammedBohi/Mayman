@@ -12,8 +12,11 @@ const app = express();
 
 // ✅ Configuration dynamique de CORS
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || "http://localhost:8081", // Utilise la variable d'env ou localhost
-  credentials: true, // Permet l'envoi des cookies & tokens d'authentification
+  origin: [
+    "https://maylissman.com", 
+    "https://www.maylissman.com",
+    process.env.FRONTEND_URL || "http://localhost:8081"
+  ],  credentials: true, // Permet l'envoi des cookies & tokens d'authentification
   optionsSuccessStatus: 200, // Corrige certains problèmes CORS
 };
 
