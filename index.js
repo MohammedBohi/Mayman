@@ -10,13 +10,19 @@ const corsOptions = {
   origin: [
     "https://maylissman.com",
     "https://www.maylissman.com",
-    process.env.FRONTEND_URL || "http://localhost:8081"
+    "http://localhost:8081",
+    "https://localhost:8081", // 👈 ajoute cette ligne !
+    process.env.FRONTEND_URL
   ],
   credentials: true,
   optionsSuccessStatus: 200,
 };
 
+
+
 app.use(cors(corsOptions));
+console.log("🌍 Origines autorisées :", corsOptions.origin);
+
 app.use(express.json());
 
 // ✅ Import des routes
