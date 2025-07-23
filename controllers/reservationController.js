@@ -90,6 +90,7 @@ const creerReservation = async (req, res) => {
         adresseReservation, telephone, departement,
         personnes
     } = req.body;
+console.log("👉 Données reçues :", req.body);
 
     try {
         const prestationIds = personnes.map(p => p.prestation_id);
