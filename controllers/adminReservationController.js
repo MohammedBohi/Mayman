@@ -90,7 +90,7 @@ const creerReservationPourClient = async (req, res) => {
 tarifTotal += parseFloat(prestation.prix) + (avecSoin ? 7 : 0);
         }
 
-        dureeTotale += 15;
+        dureeTotale += 20;
 
         const [h, m] = heure_debut.split(':').map(Number);
         const debutMinutes = h * 60 + m;
