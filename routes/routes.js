@@ -1,4 +1,4 @@
-require('dotenv').config();
+/*require('dotenv').config();
 const Stripe = require('stripe');
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY); // Assure-toi que la clé Stripe est bien dans ton fichier .env
 
@@ -796,3 +796,4 @@ router.get('/utilisateurs/profil', authenticateUser, async (req, res) => {
 
 // **Exporter les routes**
 module.exports = router;
+*/

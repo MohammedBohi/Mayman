@@ -7,7 +7,7 @@ const authenticateUser = (req, res, next) => {
         return res.status(401).json({ error: 'Authorization header missing or invalid format' });
     }
 
-    const token = authHeader.split(' ')[1]?.trim(); // Supprime les espaces inutiles
+    const token = authHeader.split(' ')[1]?.trim();
 
     if (!token) {
         return res.status(401).json({ error: 'Token missing' });
@@ -15,7 +15,13 @@ const authenticateUser = (req, res, next) => {
 
     try {
         const user = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = user; // Ajout de l'utilisateur dans la requête
+
+        // ✅ Correction ici : compatibilité du nom de champ
+        if (user.typeutilisateur && !user.typeUtilisateur) {
+            user.typeUtilisateur = user.typeutilisateur;
+        }
+
+        req.user = user;
         next();
     } catch (err) {
         console.error("❌ Erreur de validation du token :", err);
