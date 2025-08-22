@@ -24,7 +24,7 @@ const getCreneauxDisponibles = async (req, res) => {
       [date]
     );
 
-    let heureOuverture = "09:00";
+    let heureOuverture = "16:00";
     let heureFermeture = "21:00";
 
     const dayOfWeek = new Date(date).getDay();
