@@ -25,7 +25,7 @@ const getCreneauxDisponibles = async (req, res) => {
     );
 
     let heureOuverture = "16:00";
-    let heureFermeture = "21:30";
+    let heureFermeture = "21:15";
 
     const dayOfWeek = new Date(date).getDay();
     if (dayOfWeek === 0 && plageResult.rows.length === 0) return res.json([]);
