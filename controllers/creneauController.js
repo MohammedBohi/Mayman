@@ -23,8 +23,9 @@ const getCreneauxDisponibles = async (req, res) => {
       'SELECT heure_ouverture, heure_fermeture FROM plage_horaire WHERE date = $1',
       [date]
     );
+    
 
-    let heureOuverture = "16:00";
+    let heureOuverture = "09:00";
     let heureFermeture = "21:15";
 
     const dayOfWeek = new Date(date).getDay();
