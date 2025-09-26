@@ -1,21 +1,6 @@
 const db = require('../db');
-const nodemailer = require('nodemailer');
-const sendMail = async ({ to, subject, text }) => {
-    const transporter = nodemailer.createTransport({
-        service: 'gmail',
-        auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS
-        }
-    });
+const { sendMail } = require('../mailer');
 
-    await transporter.sendMail({
-        from: process.env.EMAIL_USER,
-        to,
-        subject,
-        text
-    });
-};
 
 // 🔄 GET /api/reservations/mes
 const getMesReservations = async (req, res) => {
@@ -84,102 +69,98 @@ const getReservationById = async (req, res) => {
 
 // 🆕 POST /api/reservations
 const creerReservation = async (req, res) => {
-    const utilisateur_id = req.user.id;
-    const {
-        nom, prenom, jour, heure_debut,
-        adresseReservation, telephone, departement,
-        personnes
-    } = req.body;
-console.log("👉 Données reçues :", req.body);
+  const utilisateur_id = req.user.id;
+  const {
+    nom, prenom, jour, heure_debut,
+    adresseReservation, telephone, departement,
+    personnes
+  } = req.body;
+  console.log("👉 Données reçues :", req.body);
 
-    try {
-        const prestationIds = personnes.map(p => p.prestation_id);
-        const prestationsData = await db.query(
-            `SELECT * FROM prestation WHERE id = ANY($1)`,
-            [prestationIds]
-        );
-        const prestationsMap = {};
-        prestationsData.rows.forEach(p => prestationsMap[p.id] = p);
+  try {
+    const prestationIds = personnes.map(p => p.prestation_id);
+    const prestationsData = await db.query(
+      `SELECT * FROM prestation WHERE id = ANY($1)`,
+      [prestationIds]
+    );
+    const prestationsMap = {};
+    prestationsData.rows.forEach(p => prestationsMap[p.id] = p);
 
-        let soinTotal = 0;
-        let dureeTotale = 0;
-        let tarifTotal = 0;
+    let dureeTotale = 0;
+    let tarifTotal = 0;
 
-        for (const p of personnes) {
-            const prestation = prestationsMap[p.prestation_id];
-            if (!prestation) return res.status(400).json({ error: `Prestation ID ${p.prestation_id} introuvable.` });
+    for (const p of personnes) {
+      const prestation = prestationsMap[p.prestation_id];
+      if (!prestation) {
+        return res.status(400).json({ error: `Prestation ID ${p.prestation_id} introuvable.` });
+      }
+      const avecSoin = prestation.soin_disponible && p.avec_soin;
+      dureeTotale += prestation.duree_minutes + (avecSoin ? 10 : 0);
+      tarifTotal += parseFloat(prestation.prix) + (avecSoin ? 7 : 0);
+    }
 
-            const avecSoin = prestation.soin_disponible && p.avec_soin;
-            if (avecSoin) soinTotal++;
+    // +20 min (déplacement / tampon)
+    dureeTotale += 20;
 
-            dureeTotale += prestation.duree_minutes + (avecSoin ? 10 : 0);
-tarifTotal += parseFloat(prestation.prix) + (avecSoin ? 7 : 0);
-        }
+    const [h, m] = heure_debut.split(':').map(Number);
+    const debutMinutes = h * 60 + m;
+    const finMinutes = debutMinutes + dureeTotale;
 
-        dureeTotale += 20;
+    // Conflits
+    const existingRes = await db.query(
+      'SELECT heure_debut, duree_totale_minutes FROM reservation WHERE jour = $1',
+      [jour]
+    );
+    for (const resv of existingRes.rows) {
+      const [hr, mr] = resv.heure_debut.split(':').map(Number);
+      const resvDebut = hr * 60 + mr;
+      const resvFin = resvDebut + resv.duree_totale_minutes;
+      if (Math.max(debutMinutes, resvDebut) < Math.min(finMinutes, resvFin)) {
+        return res.status(400).json({ error: "Conflit avec une autre réservation." });
+      }
+    }
 
-        const [h, m] = heure_debut.split(':').map(Number);
-        const debutMinutes = h * 60 + m;
-        const finMinutes = debutMinutes + dureeTotale;
+    tarifTotal = Number(tarifTotal);
 
-        const existingRes = await db.query(
-            'SELECT heure_debut, duree_totale_minutes FROM reservation WHERE jour = $1',
-            [jour]
-        );
+    const result = await db.query(`
+      INSERT INTO reservation (
+        utilisateurid, nom, prenom, jour, creneau, heure_debut, duree_totale_minutes,
+        adressereservation, telephone, departement, tarif
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      RETURNING id
+    `, [
+      utilisateur_id, nom, prenom, jour, heure_debut, heure_debut, dureeTotale,
+      adresseReservation, telephone, departement, tarifTotal
+    ]);
 
-        for (const resv of existingRes.rows) {
-            const [hr, mr] = resv.heure_debut.split(':').map(Number);
-            const resvDebut = hr * 60 + mr;
-            const resvFin = resvDebut + resv.duree_totale_minutes;
-            if (Math.max(debutMinutes, resvDebut) < Math.min(finMinutes, resvFin)) {
-                return res.status(400).json({ error: "Conflit avec une autre réservation." });
-            }
-        }
-tarifTotal = Number(tarifTotal);
+    const reservationId = result.rows[0].id;
 
+    for (const p of personnes) {
+      await db.query(`
+        INSERT INTO reservation_personne (reservation_id, prestation_id, avec_soin, nom, prenom)
+        VALUES ($1, $2, $3, $4, $5)
+      `, [reservationId, p.prestation_id, p.avec_soin, p.nom, p.prenom]);
+    }
 
-        const result = await db.query(`
-            INSERT INTO reservation (
-                utilisateurid, nom, prenom, jour, creneau, heure_debut, duree_totale_minutes,
-                adressereservation, telephone, departement,
-                tarif
-            )
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-            RETURNING id
-        `, [
-            utilisateur_id, nom, prenom, jour, heure_debut, heure_debut, dureeTotale,
-            adresseReservation, telephone, departement,
-            tarifTotal
-        ]);
+    const userInfo = await db.query('SELECT email FROM utilisateur WHERE id = $1', [utilisateur_id]);
+    const emailClient = userInfo.rows[0]?.email || null;
 
-        const reservationId = result.rows[0].id;
+    const finH = String(Math.floor(finMinutes / 60)).padStart(2, '0');
+    const finM = String(finMinutes % 60).padStart(2, '0');
+    const heureFin = `${finH}:${finM}`;
+    const dateLocale = new Date(jour).toLocaleDateString("fr-FR", {
+      weekday: "long", day: "2-digit", month: "long", year: "numeric"
+    });
 
-        for (const p of personnes) {
-            await db.query(`
-                INSERT INTO reservation_personne (reservation_id, prestation_id, avec_soin, nom, prenom)
-                VALUES ($1, $2, $3, $4, $5)
-            `, [reservationId, p.prestation_id, p.avec_soin, p.nom, p.prenom]);
-        }
+    const resumePersonnes = personnes.map((p) => {
+      const prestation = prestationsMap[p.prestation_id];
+      const prix = parseFloat(prestation.prix);
+      const prixTotalPerso = prix + (p.avec_soin ? 7 : 0);
+      return `👤 ${p.nom} ${p.prenom} : ${prestation.nom} ${p.avec_soin ? "(+ soin)" : ""} - ${prixTotalPerso.toFixed(2)} €`;
+    }).join('\n');
 
-        const userInfo = await db.query('SELECT email FROM utilisateur WHERE id = $1', [utilisateur_id]);
-        const emailClient = userInfo.rows[0]?.email;
-
-        const finH = String(Math.floor(finMinutes / 60)).padStart(2, '0');
-        const finM = String(finMinutes % 60).padStart(2, '0');
-        const heureFin = `${finH}:${finM}`;
-        const dateLocale = new Date(jour).toLocaleDateString("fr-FR", {
-            weekday: "long", day: "2-digit", month: "long", year: "numeric"
-        });
-
-       const resumePersonnes = personnes.map((p) => {
-    const prestation = prestationsMap[p.prestation_id];
-const prix = parseFloat(prestation.prix);
-const prixTotalPerso = prix + (p.avec_soin ? 7 : 0);
-    return `👤 ${p.nom} ${p.prenom} : ${prestation.nom} ${p.avec_soin ? "(+ soin)" : ""} - ${prixTotalPerso.toFixed(2)} €`;
-}).join('\n');
-
-
-        const contenuMail = `
+    const contenuMail = `
 Bonjour ${nom} ${prenom},
 
 Votre réservation a bien été enregistrée ✅
@@ -190,8 +171,8 @@ ${resumePersonnes}
 💰 Tarif total : ${tarifTotal} €
 📍 Adresse : ${adresseReservation}
 📞 Tel : ${telephone}
-        `;
-        const contenuMailAdmin = `
+    `;
+    const contenuMailAdmin = `
 📬 Nouvelle réservation reçue :
 
 👤 Client : ${nom} ${prenom}
@@ -201,66 +182,65 @@ ${resumePersonnes}
 💰 Total : ${tarifTotal} €
 📍 Adresse : ${adresseReservation}
 📞 Tel : ${telephone}
-`;
+    `;
 
-        const transporter = nodemailer.createTransport({
-            service: 'gmail',
-            auth: {
-                user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS
-            }
-        });
+    // 👉 Répond tout de suite (ne bloque pas sur l'email)
+    res.json({ message: "Réservation enregistrée avec succès.", reservation_id: reservationId });
 
+    // 👉 Envoi des emails en arrière-plan
+    setImmediate(async () => {
+      try {
         if (emailClient) {
-            await transporter.sendMail({
-                from: process.env.EMAIL_USER,
-                to: emailClient,
-                subject: '✔️ Confirmation de votre réservation',
-                text: contenuMail
-            });
+          await sendMail({
+            to: emailClient,
+            subject: '✔️ Confirmation de votre réservation',
+            text: contenuMail
+          });
         }
         await sendMail({
-    to: 'mayliss.mazet24@gmail.com',
-    subject: '🆕 Nouvelle réservation reçue',
-    text: contenuMailAdmin
-});
+          to: 'mayliss.mazet24@gmail.com',
+          subject: '🆕 Nouvelle réservation reçue',
+          text: contenuMailAdmin
+        });
+      } catch (e) {
+        console.error('Erreur envoi mail post-réponse:', e);
+      }
+    });
 
-        res.json({ message: "Réservation enregistrée avec succès.", reservation_id: reservationId });
-
-    } catch (error) {
-        console.error("Erreur réservation :", error);
-        res.status(500).json({ error: "Erreur lors de la création de la réservation." });
-    }
+  } catch (error) {
+    console.error("Erreur réservation :", error);
+    res.status(500).json({ error: "Erreur lors de la création de la réservation." });
+  }
 };
 
 // ❌ DELETE /api/reservations/:id
 const annulerReservation = async (req, res) => {
-    const id = req.params.id;
-    const utilisateurId = req.user.id;
+  const id = req.params.id;
+  const utilisateurId = req.user.id;
 
-    try {
-        // Vérifie que la réservation appartient à l'utilisateur
-        const check = await db.query(
-            'SELECT * FROM reservation WHERE id = $1 AND utilisateurid = $2',
-            [id, utilisateurId]
-        );
+  try {
+    // Vérifie que la réservation appartient à l'utilisateur
+    const check = await db.query(
+      'SELECT * FROM reservation WHERE id = $1 AND utilisateurid = $2',
+      [id, utilisateurId]
+    );
 
-        if (check.rows.length === 0) {
-            return res.status(404).json({ error: "Réservation introuvable ou non autorisée." });
-        }
+    if (check.rows.length === 0) {
+      return res.status(404).json({ error: "Réservation introuvable ou non autorisée." });
+    }
 
-        const reservation = check.rows[0];
+    const reservation = check.rows[0];
 
-        // Récupération de l'e-mail du client
-        const userInfo = await db.query('SELECT email FROM utilisateur WHERE id = $1', [utilisateurId]);
-        const emailClient = userInfo.rows[0]?.email;
+    // Récup email client
+    const userInfo = await db.query('SELECT email FROM utilisateur WHERE id = $1', [utilisateurId]);
+    const emailClient = userInfo.rows[0]?.email || null;
 
-        // Formatage de l'email
-        const dateLocale = new Date(reservation.jour).toLocaleDateString("fr-FR", {
-            weekday: "long", day: "2-digit", month: "long", year: "numeric"
-        });
+    // Format email
+    const dateLocale = new Date(reservation.jour).toLocaleDateString("fr-FR", {
+      weekday: "long", day: "2-digit", month: "long", year: "numeric"
+    });
 
-        const contenuMail = `
+    const contenuMailClient = `
 Bonjour ${reservation.nom} ${reservation.prenom},
 
 Votre réservation du ${dateLocale} à ${reservation.heure_debut} a bien été annulée ❌
@@ -270,9 +250,9 @@ Votre réservation du ${dateLocale} à ${reservation.heure_debut} a bien été a
 
 Merci de nous avoir prévenus.
 À bientôt 👋
-        `;
+    `;
 
-        const contenuMailAdmin = `
+    const contenuMailAdmin = `
 ❌ Annulation de réservation par le client :
 
 👤 ${reservation.nom} ${reservation.prenom}
@@ -280,41 +260,40 @@ Merci de nous avoir prévenus.
 🕒 Heure : ${reservation.heure_debut}
 📍 Adresse : ${reservation.adressereservation}
 📞 Tel : ${reservation.telephone}
-`;
+    `;
 
-        // Suppression de la réservation (ON DELETE CASCADE pour reservation_personne)
-        await db.query('DELETE FROM reservation WHERE id = $1', [id]);
+    // Supprimer la réservation
+    await db.query('DELETE FROM reservation WHERE id = $1', [id]);
 
-        // Envoi de l'email
+    // 👉 Répondre tout de suite
+    res.json({ message: "Réservation annulée et email envoyé." });
+
+    // 👉 Envoi emails après
+    setImmediate(async () => {
+      try {
         if (emailClient) {
-            const transporter = nodemailer.createTransport({
-                service: 'gmail',
-                auth: {
-                    user: process.env.EMAIL_USER,
-                    pass: process.env.EMAIL_PASS
-                }
-            });
-
-            await transporter.sendMail({
-                from: process.env.EMAIL_USER,
-                to: emailClient,
-                subject: '❌ Réservation annulée',
-                text: contenuMail
-            });
+          await sendMail({
+            to: emailClient,
+            subject: '❌ Réservation annulée',
+            text: contenuMailClient
+          });
         }
         await sendMail({
-    to: 'mayliss.mazet24@gmail.com',
-    subject: '❌ Annulation d’une réservation',
-    text: contenuMailAdmin
-});
+          to: 'mayliss.mazet24@gmail.com',
+          subject: '❌ Annulation d’une réservation',
+          text: contenuMailAdmin
+        });
+      } catch (e) {
+        console.error('Erreur envoi mail post-réponse (annulation):', e);
+      }
+    });
 
-        res.json({ message: "Réservation annulée et email envoyé." });
-
-    } catch (error) {
-        console.error("Erreur annulation réservation :", error);
-        res.status(500).json({ error: "Erreur lors de l’annulation." });
-    }
+  } catch (error) {
+    console.error("Erreur annulation réservation :", error);
+    res.status(500).json({ error: "Erreur lors de l’annulation." });
+  }
 };
+
 
 module.exports = {
     creerReservation,
