@@ -1,5 +1,5 @@
 const db = require('../db');
-const nodemailer = require('nodemailer');
+const { sendMail } = require('../mailer');
 
 const getReservationsParJour = async (req, res) => {
     const { jour } = req.query;
