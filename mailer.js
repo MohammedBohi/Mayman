@@ -15,11 +15,12 @@ const transporter = nodemailer.createTransport({
 
   // ♻️ pool = réutilisation de connexions (perf + stabilité)
   pool: true,
-  maxConnections: 3,
+  maxConnections: 1,          // ← réduit pour stabilité
   maxMessages: 50,
+  keepAlive: true,            // ← réutiliser la connexion
 
   // 🧯 anti-ETIMEDOUT (forçage IPv4 + timeouts)
-  family: 4,                 // force IPv4 (évite IPv6 capricieux)
+  family: 4,                  // force IPv4 (évite IPv6 capricieux)
   connectionTimeout: 20000,
   greetingTimeout: 10000,
   socketTimeout: 30000,
@@ -39,7 +40,7 @@ async function withRetry(fn, retries = 3) {
   }
 }
 
-function withAppTimeout(promise, ms = 15000) {
+function withAppTimeout(promise, ms = 60000) { // ← 60s au lieu de 15s
   let t;
   return Promise.race([
     promise,
