@@ -96,8 +96,8 @@ const getCreneauxDisponibles = async (req, res) => {
       // Si mode DOMICILE, vérifier le département
       if (planningMode === 'DOMICILE' && codeDepartement) {
         const deptCheck = await db.query(
-          'SELECT * FROM planning_exception_departement WHERE planning_exception_id = $1 AND code = $2',
-          [exc.id, codeDepartement]
+          'SELECT * FROM planning_exception_departement WHERE planning_exception_id = $1 AND code LIKE $2',
+          [exc.id, codeDepartement + '%']
         );
         if (deptCheck.rows.length === 0) {
           return res.json([]); // Département non couvert ce jour
@@ -129,8 +129,8 @@ const getCreneauxDisponibles = async (req, res) => {
       // Si mode DOMICILE, vérifier le département
       if (planningMode === 'DOMICILE' && codeDepartement) {
         const deptCheck = await db.query(
-          'SELECT * FROM planning_hebdo_departement WHERE planning_hebdo_id = $1 AND code = $2',
-          [hebdo.rows[0].id, codeDepartement]
+          'SELECT * FROM planning_hebdo_departement WHERE planning_hebdo_id = $1 AND code LIKE $2',
+          [hebdo.rows[0].id, codeDepartement + '%']
         );
         if (deptCheck.rows.length === 0) {
           return res.json([]); // Département non couvert
