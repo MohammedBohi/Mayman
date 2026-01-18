@@ -12,7 +12,7 @@ const getReservationsParJour = async (req, res) => {
         r.*,
         COUNT(rp.id) AS nombre_personnes,
         phd.nom AS departement_nom,
-        phd.code AS departement_code,
+        phd.code_postal AS departement_code,
         COALESCE(
             JSON_AGG(
                 JSON_BUILD_OBJECT(
@@ -26,9 +26,9 @@ const getReservationsParJour = async (req, res) => {
         ) AS personnes
     FROM reservation r
     LEFT JOIN reservation_personne rp ON rp.reservation_id = r.id
-    LEFT JOIN planning_hebdo_departement phd ON phd.code = r.departement
+    LEFT JOIN planning_hebdo_departement phd ON phd.code_postal = r.departement
     WHERE r.jour = $1
-    GROUP BY r.id, phd.nom, phd.code
+    GROUP BY r.id, phd.nom, phd.code_postal
     ORDER BY r.heure_debut ASC
 `, [jour]);
         res.json(result.rows);
@@ -43,11 +43,11 @@ const getReservationDetails = async (req, res) => {
 
     try {
         const reservation = await db.query(`
-            SELECT r.*, 
+            SELECT r.*,
                    phd.nom AS departement_nom,
-                   phd.code AS departement_code
+                   phd.code_postal AS departement_code
             FROM reservation r
-            LEFT JOIN planning_hebdo_departement phd ON phd.code = r.departement
+            LEFT JOIN planning_hebdo_departement phd ON phd.code_postal = r.departement
             WHERE r.id = $1
         `, [id]);
         if (reservation.rows.length === 0) return res.status(404).json({ error: "Réservation introuvable." });
