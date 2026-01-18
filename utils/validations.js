@@ -87,15 +87,15 @@ const validateDate = (date) => {
 };
 
 /**
- * Valide un code département français
+ * Valide un code département français ou code postal
  */
 const validateCodeDepartement = (code) => {
   if (!code) {
     return { valid: false, error: "Le code département est requis" };
   }
   
-  // Format simplifié : 2-3 caractères
-  if (code.length < 2 || code.length > 3) {
+  // Accepter code département (2-3 chars) ou code postal (5 chars)
+  if (code.length < 2 || code.length > 5) {
     return { valid: false, error: "Code département invalide" };
   }
   
