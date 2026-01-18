@@ -3,6 +3,13 @@ const nodemailer = require('nodemailer');
 
 const PORT = Number(process.env.SMTP_PORT || 465);
 
+console.log('📧 Configuration SMTP:', {
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: PORT,
+  user: process.env.EMAIL_USER ? '✓ configuré' : '✗ manquant',
+  pass: process.env.EMAIL_PASS ? '✓ configuré' : '✗ manquant',
+});
+
 const transporter = nodemailer.createTransport({
   // ✅ robuste sur Railway : on explicite host/port
   host: process.env.SMTP_HOST || 'smtp.gmail.com',
@@ -10,7 +17,7 @@ const transporter = nodemailer.createTransport({
   secure: PORT === 465,       // true ↔ 465 ; false ↔ 587
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS, // mot de passe d'application Gmail
+    pass: process.env.EMAIL_PASS, // mot de passe d'application ou clé API SMTP
   },
 
   // ♻️ pool = réutilisation de connexions (perf + stabilité)

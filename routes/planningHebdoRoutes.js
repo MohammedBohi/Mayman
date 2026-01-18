@@ -17,8 +17,8 @@ const {
   updateDepartement
 } = require('../controllers/planningHebdoController');
 
-// Routes planning hebdomadaire (Admin uniquement)
-router.get('/', authenticateUser, checkRole('Admin'), getAllPlannings);
+// Routes planning hebdomadaire
+router.get('/', getAllPlannings); // Public - pour récupérer les départements disponibles
 router.get('/:jour', authenticateUser, checkRole('Admin'), getPlanningByJour);
 router.post('/', authenticateUser, checkRole('Admin'), createPlanning);
 router.put('/:id', authenticateUser, checkRole('Admin'), updatePlanning);
