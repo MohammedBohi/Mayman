@@ -164,11 +164,14 @@ const getCreneauxDisponibles = async (req, res) => {
     );
 
     const plagesBloquees = [];
+    const finsDeReservations = []; // 👈 Stocker les fins pour générer des créneaux
+    
     for (const row of indispos.rows) {
       const debut = toMinutes(row.heure_debut);
       const fin = toMinutes(row.heure_fin);
       
       plagesBloquees.push({ debut, fin });
+      finsDeReservations.push(fin); // 👈 Ajouter la fin
     }
 
     // 5. Retirer les réservations existantes
@@ -185,6 +188,21 @@ const getCreneauxDisponibles = async (req, res) => {
       const fin = debut + dureeExacte;
       
       plagesBloquees.push({ debut, fin });
+      finsDeReservations.push(fin); // 👈 Ajouter la fin
+    }
+
+    // 5b. Ajouter des créneaux qui commencent exactement après chaque réservation/indisponibilité
+    for (const finResa of finsDeReservations) {
+      // Vérifier que ce créneau est dans une plage horaire valide
+      const dansPlage = plagesHoraires.some(plage => {
+        const debutPlage = toMinutes(plage.heure_debut);
+        const finPlage = toMinutes(plage.heure_fin);
+        return finResa >= debutPlage && finResa + dureeMinutes <= finPlage;
+      });
+      
+      if (dansPlage && finResa >= heureActuelle && !creneauxPossibles.includes(finResa)) {
+        creneauxPossibles.push(finResa);
+      }
     }
 
     // 6. Filtrer les créneaux disponibles
@@ -199,7 +217,9 @@ const getCreneauxDisponibles = async (req, res) => {
       });
       
       return !conflit;
-    }).map(m => fromMinutes(m));
+    })
+    .sort((a, b) => a - b) // 👈 Trier par ordre chronologique
+    .map(m => fromMinutes(m));
 
     return res.json(creneaux);
   } catch (err) {
