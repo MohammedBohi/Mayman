@@ -42,7 +42,10 @@ const getReservationById = async (req, res) => {
     const utilisateurId = req.user.id;
     try {
         const result = await db.query(
-            'SELECT * FROM reservation WHERE id = $1 AND utilisateurid = $2',
+            `SELECT r.*, COALESCE(r.email, u.email) as email 
+             FROM reservation r
+             LEFT JOIN utilisateur u ON u.id = r.utilisateurid
+             WHERE r.id = $1 AND r.utilisateurid = $2`,
             [id, utilisateurId]
         );
         if (result.rows.length === 0) {

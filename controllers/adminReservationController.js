@@ -44,9 +44,11 @@ const getReservationDetails = async (req, res) => {
     try {
         const reservation = await db.query(`
             SELECT r.*,
+                   COALESCE(r.email, u.email) as email,
                    phd.nom AS departement_nom,
                    phd.code_postal AS departement_code
             FROM reservation r
+            LEFT JOIN utilisateur u ON u.id = r.utilisateurid
             LEFT JOIN planning_hebdo_departement phd ON (phd.code_postal LIKE r.departement || '%' OR phd.code_postal = r.departement)
             WHERE r.id = $1
         `, [id]);
@@ -71,7 +73,7 @@ const getReservationDetails = async (req, res) => {
 const creerReservationPourClient = async (req, res) => {
   const {
     utilisateur_id,
-    nom, prenom, jour, heure_debut,
+    nom, prenom, email, jour, heure_debut,
     adresseReservation, telephone,
     departement: departementParam,
     personnes, mode: modeParam
@@ -225,17 +227,17 @@ const creerReservationPourClient = async (req, res) => {
     tarifTotal = Number(tarifTotal);
     const nombrePersonnes = personnes.length;
 
-    // INSERTION RÉSERVATION (avec mode et nombre_personnes)
+    // INSERTION RÉSERVATION (avec mode, nombre_personnes et email)
     const result = await db.query(`
       INSERT INTO reservation (
-        utilisateurid, nom, prenom, jour, creneau, heure_debut, duree_totale_minutes,
+        utilisateurid, nom, prenom, email, jour, creneau, heure_debut, duree_totale_minutes,
         adressereservation, telephone, departement,
         tarif, mode, nombre_personnes
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
       RETURNING id
     `, [
-      utilisateur_id, nom, prenom, jour, heure_debut, heure_debut, dureeTotale,
+      utilisateur_id, nom, prenom, email, jour, heure_debut, heure_debut, dureeTotale,
       adresseReservation, telephone, mode === 'DOMICILE' ? codeDepartement : null,
       tarifTotal, mode, nombrePersonnes
     ]);
@@ -249,9 +251,12 @@ const creerReservationPourClient = async (req, res) => {
       `, [reservationId, p.prestation_id, p.avec_soin, p.nom, p.prenom]);
     }
 
-    // Email : récupérer l'email du client lié (si utilisateur_id fourni)
-    const userInfo = await db.query('SELECT email FROM utilisateur WHERE id = $1', [utilisateur_id]);
-    const emailClient = userInfo.rows[0]?.email || null;
+    // Email : utiliser l'email fourni ou récupérer depuis utilisateur
+    let emailClient = email || null;
+    if (!emailClient && utilisateur_id) {
+      const userInfo = await db.query('SELECT email FROM utilisateur WHERE id = $1', [utilisateur_id]);
+      emailClient = userInfo.rows[0]?.email || null;
+    }
 
     const finH = String(Math.floor(finMinutes / 60)).padStart(2, '0');
     const finM = String(finMinutes % 60).padStart(2, '0');
