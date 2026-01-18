@@ -143,38 +143,21 @@ const getCreneauxDisponibles = async (req, res) => {
     const aujourdHui = maintenant.toISOString().split("T")[0] === dateParam;
     const heureActuelle = aujourdHui ? maintenant.getHours() * 60 + maintenant.getMinutes() : 0;
 
-    let creneauxPossibles = [];
-    for (const plage of plagesHoraires) {
-      const debutPlage = toMinutes(plage.heure_debut);
-      const finPlage = toMinutes(plage.heure_fin);
-
-      // 🎯 Générer créneaux avec un pas égal à la durée de la prestation
-      // Ex: prestation 60 min → créneaux espacés de 60 min (9h00, 10h00, 11h00...)
-      for (let t = debutPlage; t + dureeMinutes <= finPlage; t += dureeMinutes) {
-        if (t >= heureActuelle) {
-          creneauxPossibles.push(t);
-        }
-      }
-    }
-
-    // 4. Retirer les indisponibilités
+    // 4. Récupérer les indisponibilités
     const indispos = await db.query(
       'SELECT heure_debut, heure_fin FROM indisponibilite WHERE jour = $1',
       [dateParam]
     );
 
     const plagesBloquees = [];
-    const finsDeReservations = []; // 👈 Stocker les fins pour générer des créneaux
     
     for (const row of indispos.rows) {
       const debut = toMinutes(row.heure_debut);
       const fin = toMinutes(row.heure_fin);
-      
       plagesBloquees.push({ debut, fin });
-      finsDeReservations.push(fin); // 👈 Ajouter la fin
     }
 
-    // 5. Retirer les réservations existantes
+    // 5. Récupérer les réservations existantes
     const reservations = await db.query(
       'SELECT heure_debut, duree_totale_minutes FROM reservation WHERE jour = $1',
       [dateParam]
@@ -182,60 +165,45 @@ const getCreneauxDisponibles = async (req, res) => {
 
     for (const row of reservations.rows) {
       const debut = toMinutes(row.heure_debut);
-      const dureeExacte = row.duree_totale_minutes;
-      
-      // Bloquer exactement la durée de la réservation
-      const fin = debut + dureeExacte;
-      
+      const fin = debut + row.duree_totale_minutes;
       plagesBloquees.push({ debut, fin });
-      finsDeReservations.push(fin); // 👈 Ajouter la fin
     }
 
-    // 5b. Pour chaque fin de réservation/indisponibilité, générer des créneaux avec le pas
-    for (const finResa of finsDeReservations) {
-      // Vérifier dans quelle plage horaire on se trouve
-      for (const plage of plagesHoraires) {
-        const debutPlage = toMinutes(plage.heure_debut);
-        const finPlage = toMinutes(plage.heure_fin);
+    // Trier les plages bloquées par ordre chronologique
+    plagesBloquees.sort((a, b) => a.debut - b.debut);
+
+    // 6. Générer les créneaux en parcourant intelligemment les plages horaires
+    let creneauxPossibles = [];
+    
+    for (const plage of plagesHoraires) {
+      const debutPlage = toMinutes(plage.heure_debut);
+      const finPlage = toMinutes(plage.heure_fin);
+      
+      let curseur = Math.max(debutPlage, heureActuelle);
+      
+      while (curseur + dureeMinutes <= finPlage) {
+        const finCreneau = curseur + dureeMinutes;
         
-        // Si la fin de réservation est dans cette plage, générer à partir de là
-        if (finResa >= debutPlage && finResa < finPlage) {
-          for (let t = finResa; t + dureeMinutes <= finPlage; t += dureeMinutes) {
-            if (t >= heureActuelle && !creneauxPossibles.includes(t)) {
-              creneauxPossibles.push(t);
-            }
-          }
+        // Vérifier si ce créneau chevauche une plage bloquée
+        const conflit = plagesBloquees.find(p => 
+          Math.max(curseur, p.debut) < Math.min(finCreneau, p.fin)
+        );
+        
+        if (!conflit) {
+          // Créneau disponible
+          creneauxPossibles.push(curseur);
+          curseur += dureeMinutes;
+        } else {
+          // Conflit détecté → sauter à la fin de la plage bloquée
+          curseur = conflit.fin;
         }
       }
     }
 
-    // 6. Filtrer les créneaux disponibles
+    // 7. Formater et retourner les créneaux
     const creneaux = creneauxPossibles
-    .filter((creneau, index, self) => {
-      // Supprimer les doublons
-      return self.indexOf(creneau) === index;
-    })
-    .filter(creneau => {
-      const finCreneau = creneau + dureeMinutes;
-      
-      // Vérifier qu'il n'y a AUCUN chevauchement avec les plages bloquées
-      // Le créneau est valide UNIQUEMENT si [creneau, finCreneau[ ne touche AUCUNE plage bloquée
-      const conflit = plagesBloquees.some(p => {
-        // Chevauchement si : max(debut1, debut2) < min(fin1, fin2)
-        return Math.max(creneau, p.debut) < Math.min(finCreneau, p.fin);
-      });
-      
-      return !conflit;
-    })
-    .sort((a, b) => a - b) // 👈 Trier par ordre chronologique
-    .filter((creneau, index, sorted) => {
-      // 🎯 Supprimer les créneaux qui cassent le pas régulier
-      // Si deux créneaux sont trop proches (< durée de prestation), garder seulement le premier
-      if (index === 0) return true;
-      const precedent = sorted[index - 1];
-      return (creneau - precedent) >= dureeMinutes;
-    })
-    .map(m => fromMinutes(m));
+      .sort((a, b) => a - b)
+      .map(m => fromMinutes(m));
 
     return res.json(creneaux);
   } catch (err) {
