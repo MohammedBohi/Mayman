@@ -148,8 +148,9 @@ const getCreneauxDisponibles = async (req, res) => {
       const debutPlage = toMinutes(plage.heure_debut);
       const finPlage = toMinutes(plage.heure_fin);
 
-      // Générer créneaux dans cette plage
-      for (let t = debutPlage; t + dureeMinutes <= finPlage; t += 15) { // Créneaux tous les 15 min
+      // 🎯 Générer créneaux avec un pas égal à la durée de la prestation
+      // Ex: prestation 65 min → créneaux espacés de 65 min (9h00, 10h05, 11h10...)
+      for (let t = debutPlage; t + dureeMinutes <= finPlage; t += dureeMinutes) {
         if (t >= heureActuelle) {
           creneauxPossibles.push(t);
         }
@@ -164,10 +165,10 @@ const getCreneauxDisponibles = async (req, res) => {
 
     const plagesBloquees = [];
     for (const row of indispos.rows) {
-      plagesBloquees.push({
-        debut: toMinutes(row.heure_debut),
-        fin: toMinutes(row.heure_fin)
-      });
+      const debut = toMinutes(row.heure_debut);
+      const fin = toMinutes(row.heure_fin);
+      
+      plagesBloquees.push({ debut, fin });
     }
 
     // 5. Retirer les réservations existantes
@@ -178,7 +179,11 @@ const getCreneauxDisponibles = async (req, res) => {
 
     for (const row of reservations.rows) {
       const debut = toMinutes(row.heure_debut);
-      const fin = debut + row.duree_totale_minutes;
+      const dureeExacte = row.duree_totale_minutes;
+      
+      // Bloquer exactement la durée de la réservation
+      const fin = debut + dureeExacte;
+      
       plagesBloquees.push({ debut, fin });
     }
 
