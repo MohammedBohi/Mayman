@@ -1,8 +1,9 @@
 const db = require('../db');
 const { sendMail } = require('../mailer');
+const { validateMode, validateModeDepartement } = require('../utils/validations');
 
 
-// 🔄 GET /api/reservations/mes
+//  GET /api/reservations/mes
 const getMesReservations = async (req, res) => {
     const utilisateurId = req.user.id;
     try {
@@ -72,12 +73,124 @@ const creerReservation = async (req, res) => {
   const utilisateur_id = req.user.id;
   const {
     nom, prenom, jour, heure_debut,
-    adresseReservation, telephone, departement,
-    personnes
+    adresseReservation, telephone, 
+    departement: departementParam,
+    personnes, mode: modeParam
   } = req.body;
   console.log("👉 Données reçues :", req.body);
 
   try {
+    // 🔧 EXTRACTION DU CODE DÉPARTEMENT
+    let codeDepartement = null;
+    if (departementParam) {
+      // Si c'est un code simple (ex: "46")
+      if (/^\d{2,3}$/.test(departementParam)) {
+        codeDepartement = departementParam;
+      } 
+      // Si c'est un JSON stringifié
+      else if (typeof departementParam === 'string' && departementParam.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(departementParam);
+          if (parsed.codePostal) {
+            codeDepartement = parsed.codePostal.substring(0, 2);
+          } else if (parsed.code) {
+            codeDepartement = parsed.code;
+          }
+        } catch (e) {
+          // Pas du JSON valide
+        }
+      }
+      // Si c'est un objet direct
+      else if (typeof departementParam === 'object') {
+        if (departementParam.codePostal) {
+          codeDepartement = departementParam.codePostal.substring(0, 2);
+        } else if (departementParam.code) {
+          codeDepartement = departementParam.code;
+        }
+      }
+      // Si c'est un code postal (ex: "46260")
+      else if (/^\d{5}$/.test(departementParam)) {
+        codeDepartement = departementParam.substring(0, 2);
+      }
+    }
+
+    // 🔧 DÉTECTION AUTOMATIQUE DU MODE (si non fourni)
+    const dateObj = new Date(jour + 'T12:00:00');
+    const jourSemaine = dateObj.getDay() || 7;
+
+    // Vérifier exception
+    const exception = await db.query(
+      'SELECT * FROM planning_exception WHERE date = $1',
+      [jour]
+    );
+
+    let planningActif = false;
+    let planningMode = null;
+    let planningId = null;
+    let isException = false;
+
+    if (exception.rows.length > 0) {
+      planningActif = exception.rows[0].actif;
+      planningMode = exception.rows[0].mode; // Mode détecté depuis planning
+      planningId = exception.rows[0].id;
+      isException = true;
+    } else {
+      const hebdo = await db.query(
+        'SELECT * FROM planning_hebdo WHERE jour_semaine = $1',
+        [jourSemaine]
+      );
+      if (hebdo.rows.length > 0) {
+        planningActif = hebdo.rows[0].actif;
+        planningMode = hebdo.rows[0].mode; // Mode détecté depuis planning
+        planningId = hebdo.rows[0].id;
+      }
+    }
+
+    if (!planningActif) {
+      return res.status(400).json({ error: "Jour fermé ou indisponible." });
+    }
+
+    // Utiliser le mode détecté ou celui fourni par le frontend
+    const mode = modeParam || planningMode;
+
+    // VALIDATION MODE
+    const validationMode = validateMode(mode);
+    if (!validationMode.valid) {
+      return res.status(400).json({ error: validationMode.error });
+    }
+
+    if (planningMode !== mode) {
+      return res.status(400).json({ 
+        error: `Ce jour est en mode ${planningMode}, pas ${mode}.` 
+      });
+    }
+
+    // Vérifier département si DOMICILE
+    if (mode === 'DOMICILE') {
+      if (!codeDepartement) {
+        return res.status(400).json({ error: "Département requis pour mode DOMICILE." });
+      }
+
+      const tableDept = isException 
+        ? 'planning_exception_departement' 
+        : 'planning_hebdo_departement';
+      const idColumn = isException 
+        ? 'planning_exception_id' 
+        : 'planning_hebdo_id';
+        
+      const deptCheck = await db.query(
+        `SELECT * FROM ${tableDept} WHERE ${idColumn} = $1 AND code = $2`,
+        [planningId, codeDepartement]
+      );
+      
+      if (deptCheck.rows.length === 0) {
+        return res.status(400).json({ 
+          error: `Département ${codeDepartement} non couvert ce jour.` 
+        });
+      }
+    }
+
+    // CALCUL DURÉE ET TARIF
     const prestationIds = personnes.map(p => p.prestation_id);
     const prestationsData = await db.query(
       `SELECT * FROM prestation WHERE id = ANY($1)`,
@@ -94,19 +207,19 @@ const creerReservation = async (req, res) => {
       if (!prestation) {
         return res.status(400).json({ error: `Prestation ID ${p.prestation_id} introuvable.` });
       }
-      const avecSoin = prestation.soin_disponible && p.avec_soin;
+      const avecSoin = mode === 'SALON' && prestation.soin_disponible && p.avec_soin;
       dureeTotale += prestation.duree_minutes + (avecSoin ? 10 : 0);
-      tarifTotal += parseFloat(prestation.prix) + (avecSoin ? 7 : 0);
+      tarifTotal += parseFloat(prestation.prix) + (avecSoin ? 10 : 0);
     }
 
-    // +20 min (déplacement / tampon)
+    // +20 min (déplacement)
     dureeTotale += 20;
 
     const [h, m] = heure_debut.split(':').map(Number);
     const debutMinutes = h * 60 + m;
     const finMinutes = debutMinutes + dureeTotale;
 
-    // Conflits
+    // VÉRIFICATION CONFLITS
     const existingRes = await db.query(
       'SELECT heure_debut, duree_totale_minutes FROM reservation WHERE jour = $1',
       [jour]
@@ -121,17 +234,20 @@ const creerReservation = async (req, res) => {
     }
 
     tarifTotal = Number(tarifTotal);
+    const nombrePersonnes = personnes.length;
 
+    // INSERTION RÉSERVATION (avec mode et nombre_personnes)
     const result = await db.query(`
       INSERT INTO reservation (
         utilisateurid, nom, prenom, jour, creneau, heure_debut, duree_totale_minutes,
-        adressereservation, telephone, departement, tarif
+        adressereservation, telephone, departement, tarif, mode, nombre_personnes
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING id
     `, [
       utilisateur_id, nom, prenom, jour, heure_debut, heure_debut, dureeTotale,
-      adresseReservation, telephone, departement, tarifTotal
+      adresseReservation, telephone, mode === 'DOMICILE' ? codeDepartement : null, 
+      tarifTotal, mode, nombrePersonnes
     ]);
 
     const reservationId = result.rows[0].id;
@@ -160,6 +276,8 @@ const creerReservation = async (req, res) => {
       return `👤 ${p.nom} ${p.prenom} : ${prestation.nom} ${p.avec_soin ? "(+ soin)" : ""} - ${prixTotalPerso.toFixed(2)} €`;
     }).join('\n');
 
+    const modeTexte = mode === 'SALON' ? '🏠 Au salon' : `📍 À domicile (${departement})`;
+
     const contenuMail = `
 Bonjour ${nom} ${prenom},
 
@@ -167,6 +285,7 @@ Votre réservation a bien été enregistrée ✅
 
 📅 Date : ${dateLocale}
 🕒 Heure : ${heure_debut} → ${heureFin}
+${modeTexte}
 ${resumePersonnes}
 💰 Tarif total : ${tarifTotal} €
 📍 Adresse : ${adresseReservation}
@@ -178,16 +297,17 @@ ${resumePersonnes}
 👤 Client : ${nom} ${prenom}
 📅 Date : ${dateLocale}
 🕒 Heure : ${heure_debut} → ${heureFin}
+${modeTexte}
 ${resumePersonnes}
 💰 Total : ${tarifTotal} €
 📍 Adresse : ${adresseReservation}
 📞 Tel : ${telephone}
     `;
 
-    // 👉 Répond tout de suite (ne bloque pas sur l'email)
+    // Répond tout de suite (ne bloque pas sur l'email)
     res.json({ message: "Réservation enregistrée avec succès.", reservation_id: reservationId });
 
-    // 👉 Envoi des emails en arrière-plan
+    // Envoi des emails en arrière-plan
     setImmediate(async () => {
       try {
         if (emailClient) {
@@ -198,7 +318,7 @@ ${resumePersonnes}
           });
         }
         await sendMail({
-          to: 'mayliss.mazet24@gmail.com',
+          to: 'mohamedbohi2001@gmail.com',
           subject: '🆕 Nouvelle réservation reçue',
           text: contenuMailAdmin
         });
@@ -213,7 +333,7 @@ ${resumePersonnes}
   }
 };
 
-// ❌ DELETE /api/reservations/:id
+//  DELETE /api/reservations/:id
 const annulerReservation = async (req, res) => {
   const id = req.params.id;
   const utilisateurId = req.user.id;
@@ -265,10 +385,10 @@ Merci de nous avoir prévenus.
     // Supprimer la réservation
     await db.query('DELETE FROM reservation WHERE id = $1', [id]);
 
-    // 👉 Répondre tout de suite
+    // Répondre tout de suite
     res.json({ message: "Réservation annulée et email envoyé." });
 
-    // 👉 Envoi emails après
+    //  Envoi emails après
     setImmediate(async () => {
       try {
         if (emailClient) {
@@ -279,7 +399,7 @@ Merci de nous avoir prévenus.
           });
         }
         await sendMail({
-          to: 'mayliss.mazet24@gmail.com',
+          to: 'mohamedbohi2001@gmail.com',
           subject: '❌ Annulation d’une réservation',
           text: contenuMailAdmin
         });

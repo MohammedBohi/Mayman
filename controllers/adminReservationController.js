@@ -1,5 +1,6 @@
 const db = require('../db');
 const { sendMail } = require('../mailer');
+const { validateMode, validateModeDepartement } = require('../utils/validations');
 
 const getReservationsParJour = async (req, res) => {
     const { jour } = req.query;
@@ -61,11 +62,114 @@ const creerReservationPourClient = async (req, res) => {
   const {
     utilisateur_id,
     nom, prenom, jour, heure_debut,
-    adresseReservation, telephone, departement,
-    personnes
+    adresseReservation, telephone,
+    departement: departementParam,
+    personnes, mode: modeParam
   } = req.body;
 
   try {
+    // 🔧 EXTRACTION DU CODE DÉPARTEMENT
+    let codeDepartement = null;
+    if (departementParam) {
+      if (/^\d{2,3}$/.test(departementParam)) {
+        codeDepartement = departementParam;
+      } 
+      else if (typeof departementParam === 'string' && departementParam.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(departementParam);
+          if (parsed.codePostal) {
+            codeDepartement = parsed.codePostal.substring(0, 2);
+          } else if (parsed.code) {
+            codeDepartement = parsed.code;
+          }
+        } catch (e) {}
+      }
+      else if (typeof departementParam === 'object') {
+        if (departementParam.codePostal) {
+          codeDepartement = departementParam.codePostal.substring(0, 2);
+        } else if (departementParam.code) {
+          codeDepartement = departementParam.code;
+        }
+      }
+      else if (/^\d{5}$/.test(departementParam)) {
+        codeDepartement = departementParam.substring(0, 2);
+      }
+    }
+
+    // VÉRIFICATION PLANNING DISPONIBLE
+    const dateObj = new Date(jour + 'T12:00:00');
+    const jourSemaine = dateObj.getDay() || 7;
+
+    const exception = await db.query(
+      'SELECT * FROM planning_exception WHERE date = $1',
+      [jour]
+    );
+
+    let planningActif = false;
+    let planningMode = null;
+    let planningId = null;
+    let isException = false;
+
+    if (exception.rows.length > 0) {
+      planningActif = exception.rows[0].actif;
+      planningMode = exception.rows[0].mode;
+      planningId = exception.rows[0].id;
+      isException = true;
+    } else {
+      const hebdo = await db.query(
+        'SELECT * FROM planning_hebdo WHERE jour_semaine = $1',
+        [jourSemaine]
+      );
+      if (hebdo.rows.length > 0) {
+        planningActif = hebdo.rows[0].actif;
+        planningMode = hebdo.rows[0].mode;
+        planningId = hebdo.rows[0].id;
+      }
+    }
+
+    if (!planningActif) {
+      return res.status(400).json({ error: "Jour fermé ou indisponible." });
+    }
+
+    // Utiliser le mode détecté ou celui fourni
+    const mode = modeParam || planningMode;
+
+    const validationMode = validateMode(mode);
+    if (!validationMode.valid) {
+      return res.status(400).json({ error: validationMode.error });
+    }
+
+    if (planningMode !== mode) {
+      return res.status(400).json({ 
+        error: `Ce jour est en mode ${planningMode}, pas ${mode}.` 
+      });
+    }
+
+    // Vérifier département si DOMICILE
+    if (mode === 'DOMICILE') {
+      if (!codeDepartement) {
+        return res.status(400).json({ error: "Département requis pour mode DOMICILE." });
+      }
+      const tableDept = isException 
+        ? 'planning_exception_departement' 
+        : 'planning_hebdo_departement';
+      const idColumn = isException 
+        ? 'planning_exception_id' 
+        : 'planning_hebdo_id';
+        
+      const deptCheck = await db.query(
+        `SELECT * FROM ${tableDept} WHERE ${idColumn} = $1 AND code = $2`,
+        [planningId, codeDepartement]
+      );
+      
+      if (deptCheck.rows.length === 0) {
+        return res.status(400).json({ 
+          error: `Département ${codeDepartement} non couvert ce jour.` 
+        });
+      }
+    }
+
+    // CALCUL DURÉE ET TARIF
     const prestationIds = personnes.map(p => p.prestation_id);
     const prestationsData = await db.query(
       `SELECT * FROM prestation WHERE id = ANY($1)`,
@@ -81,9 +185,9 @@ const creerReservationPourClient = async (req, res) => {
       const prestation = prestationsMap[p.prestation_id];
       if (!prestation) return res.status(400).json({ error: `Prestation ID ${p.prestation_id} introuvable.` });
 
-      const avecSoin = prestation.soin_disponible && p.avec_soin;
+      const avecSoin = mode === 'SALON' && prestation.soin_disponible && p.avec_soin;
       dureeTotale += prestation.duree_minutes + (avecSoin ? 10 : 0);
-      tarifTotal += parseFloat(prestation.prix) + (avecSoin ? 7 : 0);
+      tarifTotal += parseFloat(prestation.prix) + (avecSoin ? 10 : 0);
     }
 
     // +20 min de déplacement/tampon
@@ -93,7 +197,7 @@ const creerReservationPourClient = async (req, res) => {
     const debutMinutes = h * 60 + m;
     const finMinutes = debutMinutes + dureeTotale;
 
-    // Conflits
+    // VÉRIFICATION CONFLITS
     const existingRes = await db.query(
       'SELECT heure_debut, duree_totale_minutes FROM reservation WHERE jour = $1',
       [jour]
@@ -109,18 +213,21 @@ const creerReservationPourClient = async (req, res) => {
     }
 
     tarifTotal = Number(tarifTotal);
+    const nombrePersonnes = personnes.length;
 
+    // INSERTION RÉSERVATION (avec mode et nombre_personnes)
     const result = await db.query(`
       INSERT INTO reservation (
         utilisateurid, nom, prenom, jour, creneau, heure_debut, duree_totale_minutes,
         adressereservation, telephone, departement,
-        tarif
+        tarif, mode, nombre_personnes
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING id
     `, [
       utilisateur_id, nom, prenom, jour, heure_debut, heure_debut, dureeTotale,
-      adresseReservation, telephone, departement, tarifTotal
+      adresseReservation, telephone, mode === 'DOMICILE' ? codeDepartement : null,
+      tarifTotal, mode, nombrePersonnes
     ]);
 
     const reservationId = result.rows[0].id;
@@ -150,6 +257,8 @@ const creerReservationPourClient = async (req, res) => {
       return `👤 ${p.nom} ${p.prenom} : ${prestation.nom} ${p.avec_soin ? "(+ soin)" : ""} - ${prixTotalPerso.toFixed(2)} €`;
     }).join('\n');
 
+    const modeTexte = mode === 'SALON' ? '🏠 Au salon' : `📍 À domicile (${departement})`;
+
     const contenuMail = `
 Bonjour ${nom} ${prenom},
 
@@ -157,6 +266,7 @@ Une réservation a été créée pour vous par l'administrateur.
 
 📅 Date : ${dateLocale}
 🕒 Heure : ${heure_debut} → ${heureFin}
+${modeTexte}
 ${resumePersonnes}
 💰 Tarif total : ${tarifTotal} €
 📍 Adresse : ${adresseReservation}
@@ -177,7 +287,7 @@ ${resumePersonnes}
           });
         }
         await sendMail({
-          to: 'mayliss.mazet24@gmail.com',
+          to: 'mohamedbohi2001@gmail.com',
           subject: '📌 Réservation créée ',
           text: contenuMail
         });
@@ -254,7 +364,7 @@ Une réservation a été annulée par l’administrateur.
 📞 Tel : ${reservation.telephone}
         `;
         await sendMail({
-          to: 'mayliss.mazet24@gmail.com',
+          to: 'mohamedbohi2001@gmail.com',
           subject: '❌ Réservation annulée par l’admin',
           text: contenuCoiffeuse
         });

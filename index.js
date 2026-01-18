@@ -10,8 +10,17 @@ const corsOptions = {
   origin: [
     "https://maylissman.com",
     "https://www.maylissman.com",
+    // Dev ports commonly used by Vue CLI
+    "http://localhost:8080",
     "http://localhost:8081",
-    "https://localhost:8081", // 👈 ajoute cette ligne !
+    "http://localhost:8082",
+    "https://localhost:8080",
+    "https://localhost:8081",
+    "https://localhost:8082",
+    // 127.0.0.1 variants
+    "http://127.0.0.1:8080",
+    "http://127.0.0.1:8081",
+    "http://127.0.0.1:8082",
     process.env.FRONTEND_URL
   ],
   credentials: true,
@@ -30,18 +39,22 @@ const authRoutes = require('./routes/authRoutes');
 const reservationRoutes = require('./routes/reservationRoutes');
 const adminReservationRoutes = require('./routes/adminReservationRoutes');
 const prestationRoutes = require('./routes/prestationRoutes');
-const plageHoraireRoutes = require('./routes/plageHoraireRoutes');
+const planningHebdoRoutes = require('./routes/planningHebdoRoutes');
+const planningExceptionRoutes = require('./routes/planningExceptionRoutes');
 const indispoRoutes = require('./routes/indisponibiliteRoutes');
 const creneauRoutes = require('./routes/creneauRoutes');
+const departementRoutes = require('./routes/departementRoutes');
 
 // ✅ Montage des routes
 app.use("/api/auth", authRoutes);
 app.use("/api/reservations", reservationRoutes);
 app.use("/api/admin/reservations", adminReservationRoutes);
 app.use("/api/prestations", prestationRoutes);
-app.use("/api/plages-horaires", plageHoraireRoutes);
+app.use("/api/planning-hebdo", planningHebdoRoutes);
+app.use("/api/planning-exception", planningExceptionRoutes);
 app.use("/api/indisponibilites", indispoRoutes);
 app.use("/api/creneaux", creneauRoutes);
+app.use("/api/departements", departementRoutes);
 
 // ✅ Erreur 404
 app.use((req, res) => {

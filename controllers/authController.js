@@ -13,7 +13,7 @@ exports.inscrireUtilisateur = async (req, res) => {
       return res.status(400).json({ error: "Email déjà utilisé." });
     }
 
-    // ✅ Par défaut, typeutilisateur = 'Client' si rien n’est fourni
+    //  Par défaut, typeutilisateur = 'Client' si rien n’est fourni
     const typeFinal = typeutilisateur || 'Client';
 
     // Sécurité minimale : seuls 'Admin' et 'Client' sont acceptés
@@ -84,9 +84,17 @@ exports.demanderResetMotDePasse = async (req, res) => {
       return res.status(404).json({ error: "Email non trouvé." });
     }
 
-    const resetToken = jwt.sign({ id: user.rows[0].id }, process.env.JWT_SECRET, { expiresIn: '15m' });
-    const resetLink = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+    // Générer un code de reset 6 chiffres
+    const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const resetExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
 
+    // Stocker le code en base (nouveau champ reset_code et reset_expiry)
+    await db.query(
+      'UPDATE utilisateur SET reset_code = $1, reset_expiry = $2 WHERE id = $3',
+      [resetCode, resetExpiry, user.rows[0].id]
+    );
+
+    // Envoyer l'email avec le code
     const transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
@@ -98,11 +106,11 @@ exports.demanderResetMotDePasse = async (req, res) => {
     await transporter.sendMail({
       from: process.env.EMAIL_USER,
       to: email,
-      subject: 'Réinitialisation du mot de passe',
-      text: `Cliquez ici pour réinitialiser votre mot de passe : ${resetLink}`
+      subject: '🔐 Code de réinitialisation du mot de passe',
+      text: `Bonjour ${user.rows[0].prenom} ${user.rows[0].nom},\n\nVoici votre code de réinitialisation : ${resetCode}\n\nCe code expire dans 15 minutes.\n\nSi vous n'avez pas demandé cette réinitialisation, ignorez cet email.\n\nÀ bientôt 👋`
     });
 
-    res.json({ message: "Email de réinitialisation envoyé avec succès." });
+    res.json({ message: "Code de réinitialisation envoyé par email." });
   } catch (error) {
     console.error("Erreur demande reset :", error);
     res.status(500).json({ error: "Erreur serveur." });
@@ -110,26 +118,122 @@ exports.demanderResetMotDePasse = async (req, res) => {
 };
 
 exports.reinitialiserMotDePasse = async (req, res) => {
-  const { token, nouveauMotDePasse } = req.body;
+  const { email, code, nouveauMotDePasse } = req.body;
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const userId = decoded.id;
+    const user = await db.query('SELECT * FROM utilisateur WHERE email = $1', [email]);
+    if (user.rows.length === 0) {
+      return res.status(404).json({ error: "Email non trouvé." });
+    }
 
-    if (nouveauMotDePasse.length < 8) {
+    const userData = user.rows[0];
+
+    // Vérifier le code et son expiration
+    if (!userData.reset_code || userData.reset_code !== code) {
+      return res.status(400).json({ error: "Code incorrect." });
+    }
+
+    if (new Date() > new Date(userData.reset_expiry)) {
+      return res.status(400).json({ error: "Code expiré. Demandez une nouvelle réinitialisation." });
+    }
+
+    if (!nouveauMotDePasse || nouveauMotDePasse.length < 8) {
       return res.status(400).json({ error: "Le mot de passe doit contenir au moins 8 caractères." });
     }
 
+    // Hasher le nouveau mot de passe
     const hashed = await bcrypt.hash(nouveauMotDePasse, 12);
-    await db.query('UPDATE utilisateur SET motdepasse = $1 WHERE id = $2', [hashed, userId]);
+
+    // Mettre à jour et vider le code de reset
+    await db.query(
+      'UPDATE utilisateur SET motdepasse = $1, reset_code = NULL, reset_expiry = NULL WHERE id = $2',
+      [hashed, userData.id]
+    );
 
     res.json({ message: "Mot de passe réinitialisé avec succès." });
+
+    // Envoi email de confirmation après réponse
+    setImmediate(async () => {
+      try {
+        const transporter = nodemailer.createTransporter({
+          service: 'gmail',
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS
+          }
+        });
+
+        await transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: userData.email,
+          subject: '✅ Mot de passe réinitialisé',
+          text: `Bonjour ${userData.prenom} ${userData.nom},\n\nVotre mot de passe a bien été modifié avec succès ✅\n\nSi vous n'êtes pas à l'origine de cette modification, contactez-nous immédiatement.\n\nÀ bientôt 👋`
+        });
+      } catch (e) {
+        console.error('Erreur envoi email confirmation mot de passe:', e);
+      }
+    });
+
   } catch (error) {
-    if (error.name === 'TokenExpiredError') {
-      return res.status(400).json({ error: "Lien expiré. Veuillez recommencer." });
+    console.error("Erreur reset :", error);
+    res.status(500).json({ error: "Erreur serveur." });
+  }
+};
+
+exports.changerMotDePasse = async (req, res) => {
+  const { ancienMotDePasse, nouveauMotDePasse } = req.body;
+  const userId = req.user.id; // Récupéré du middleware d'authentification
+
+  try {
+    // Validation du nouveau mot de passe
+    if (!nouveauMotDePasse || nouveauMotDePasse.length < 8) {
+      return res.status(400).json({ error: "Le mot de passe doit contenir au moins 8 caractères." });
     }
 
-    console.error("Erreur reset :", error);
+    // Récupération de l'utilisateur
+    const user = await db.query('SELECT * FROM utilisateur WHERE id = $1', [userId]);
+    if (user.rows.length === 0) {
+      return res.status(404).json({ error: "Utilisateur non trouvé." });
+    }
+
+    // Vérification de l'ancien mot de passe
+    const match = await bcrypt.compare(ancienMotDePasse, user.rows[0].motdepasse);
+    if (!match) {
+      return res.status(403).json({ error: "Ancien mot de passe incorrect." });
+    }
+
+    // Hasher le nouveau mot de passe
+    const hashed = await bcrypt.hash(nouveauMotDePasse, 12);
+
+    // Mise à jour en base de données
+    await db.query('UPDATE utilisateur SET motdepasse = $1 WHERE id = $2', [hashed, userId]);
+
+    res.json({ message: "Mot de passe modifié avec succès." });
+
+    // Envoi email de confirmation après réponse
+    setImmediate(async () => {
+      try {
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS
+          }
+        });
+
+        await transporter.sendMail({
+          from: process.env.EMAIL_USER,
+          to: user.rows[0].email,
+          subject: '🔐 Mot de passe modifié',
+          text: `Bonjour ${user.rows[0].prenom} ${user.rows[0].nom},\n\nVotre mot de passe a bien été modifié avec succès ✅\n\nSi vous n'êtes pas à l'origine de cette modification, contactez-nous immédiatement.\n\nÀ bientôt 👋`
+        });
+      } catch (e) {
+        console.error('Erreur envoi email confirmation changement mdp:', e);
+      }
+    });
+
+  } catch (error) {
+    console.error("Erreur changement mot de passe :", error);
     res.status(500).json({ error: "Erreur serveur." });
   }
 };

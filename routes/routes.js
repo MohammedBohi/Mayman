@@ -1,6 +1,6 @@
 /*require('dotenv').config();
 const Stripe = require('stripe');
-const stripe = Stripe(process.env.STRIPE_SECRET_KEY); // Assure-toi que la clé Stripe est bien dans ton fichier .env
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY); 
 
 
 const express = require('express');
@@ -68,7 +68,7 @@ router.post('/utilisateurs/login', async (req, res) => {
             { expiresIn: '1h' }
         );
 
-        // ✅ **ENVOIE DES INFOS UTILISATEUR EN PLUS DU TOKEN**
+        //**ENVOIE DES INFOS UTILISATEUR EN PLUS DU TOKEN**
         const utilisateur = {
             id: user.rows[0].id,
             nom: user.rows[0].nom,

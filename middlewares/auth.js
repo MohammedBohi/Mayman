@@ -16,7 +16,6 @@ const authenticateUser = (req, res, next) => {
     try {
         const user = jwt.verify(token, process.env.JWT_SECRET);
 
-        // ✅ Correction ici : compatibilité du nom de champ
         if (user.typeutilisateur && !user.typeUtilisateur) {
             user.typeUtilisateur = user.typeutilisateur;
         }
