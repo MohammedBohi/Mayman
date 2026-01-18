@@ -1,5 +1,5 @@
 const db = require('../db');
-const { validateJourSemaine, validateMode, validatePlageHoraire, validateCodeDepartement } = require('../utils/validations');
+const { validateJourSemaine, validateMode, validatePlageHoraire } = require('../utils/validations');
 
 /**
  * GET /api/planning-hebdo
@@ -23,7 +23,7 @@ const getAllPlannings = async (req, res) => {
           JSON_AGG(
             JSON_BUILD_OBJECT(
               'id', phd.id,
-              'code', phd.code,
+              'code_postal', phd.code_postal,
               'nom', phd.nom
             )
           ) FILTER (WHERE phd.id IS NOT NULL),
@@ -72,7 +72,7 @@ const getPlanningByJour = async (req, res) => {
           JSON_AGG(
             JSON_BUILD_OBJECT(
               'id', phd.id,
-              'code', phd.code,
+              'code_postal', phd.code_postal,
               'nom', phd.nom
             )
           ) FILTER (WHERE phd.id IS NOT NULL),
@@ -323,11 +323,10 @@ const deletePlage = async (req, res) => {
  */
 const addDepartement = async (req, res) => {
   const { id } = req.params;
-  const { code, nom } = req.body;
+  const { code_postal, nom } = req.body;
 
-  const validation = validateCodeDepartement(code);
-  if (!validation.valid) {
-    return res.status(400).json({ error: validation.error });
+  if (!code_postal) {
+    return res.status(400).json({ error: 'Le code postal est requis.' });
   }
 
   if (!nom) {
@@ -346,10 +345,10 @@ const addDepartement = async (req, res) => {
     }
 
     const result = await db.query(`
-      INSERT INTO planning_hebdo_departement (planning_hebdo_id, code, nom)
+      INSERT INTO planning_hebdo_departement (planning_hebdo_id, code_postal, nom)
       VALUES ($1, $2, $3)
       RETURNING *
-    `, [id, code, nom]);
+    `, [id, code_postal, nom]);
 
     res.status(201).json({ 
       message: 'Département ajouté avec succès.', 
@@ -391,13 +390,10 @@ const deleteDepartement = async (req, res) => {
  */
 const updateDepartement = async (req, res) => {
   const { deptId } = req.params;
-  const { code, nom } = req.body;
+  const { code_postal, nom } = req.body;
 
-  if (code) {
-    const validation = validateCodeDepartement(code);
-    if (!validation.valid) {
-      return res.status(400).json({ error: validation.error });
-    }
+  if (!code_postal && !nom) {
+    return res.status(400).json({ error: 'Au moins un champ (code_postal ou nom) est requis.' });
   }
 
   if (nom !== undefined && !nom) {
@@ -424,11 +420,11 @@ const updateDepartement = async (req, res) => {
 
     const result = await db.query(
       `UPDATE planning_hebdo_departement
-       SET code = COALESCE($1, code),
+       SET code_postal = COALESCE($1, code_postal),
            nom = COALESCE($2, nom)
        WHERE id = $3
        RETURNING *`,
-      [code || null, nom || null, deptId]
+      [code_postal || null, nom || null, deptId]
     );
 
     res.json({ message: 'Département mis à jour avec succès.', departement: result.rows[0] });

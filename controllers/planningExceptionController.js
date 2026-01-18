@@ -1,5 +1,5 @@
 const db = require('../db');
-const { validateDate, validateMode, validatePlageHoraire, validateCodeDepartement } = require('../utils/validations');
+const { validateDate, validateMode, validatePlageHoraire } = require('../utils/validations');
 
 /**
  * GET /api/planning-exception
@@ -23,7 +23,7 @@ const getAllExceptions = async (req, res) => {
           JSON_AGG(DISTINCT
             JSON_BUILD_OBJECT(
               'id', ped.id,
-              'code', ped.code,
+              'code_postal', ped.code_postal,
               'nom', ped.nom
             )
           ) FILTER (WHERE ped.id IS NOT NULL),
@@ -72,7 +72,7 @@ const getExceptionByDate = async (req, res) => {
           JSON_AGG(DISTINCT
             JSON_BUILD_OBJECT(
               'id', ped.id,
-              'code', ped.code,
+              'code_postal', ped.code_postal,
               'nom', ped.nom
             )
           ) FILTER (WHERE ped.id IS NOT NULL),
@@ -319,11 +319,10 @@ const deletePlageException = async (req, res) => {
  */
 const addDepartementException = async (req, res) => {
   const { id } = req.params;
-  const { code, nom } = req.body;
+  const { code_postal, nom } = req.body;
 
-  const validation = validateCodeDepartement(code);
-  if (!validation.valid) {
-    return res.status(400).json({ error: validation.error });
+  if (!code_postal) {
+    return res.status(400).json({ error: 'Le code postal est requis.' });
   }
 
   if (!nom) {
@@ -342,10 +341,10 @@ const addDepartementException = async (req, res) => {
     }
 
     const result = await db.query(`
-      INSERT INTO planning_exception_departement (planning_exception_id, code, nom)
+      INSERT INTO planning_exception_departement (planning_exception_id, code_postal, nom)
       VALUES ($1, $2, $3)
       RETURNING *
-    `, [id, code, nom]);
+    `, [id, code_postal, nom]);
 
     res.status(201).json({ 
       message: 'Département ajouté avec succès.', 
