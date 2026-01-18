@@ -149,7 +149,7 @@ const getCreneauxDisponibles = async (req, res) => {
       const finPlage = toMinutes(plage.heure_fin);
 
       // 🎯 Générer créneaux avec un pas égal à la durée de la prestation
-      // Ex: prestation 65 min → créneaux espacés de 65 min (9h00, 10h05, 11h10...)
+      // Ex: prestation 60 min → créneaux espacés de 60 min (9h00, 10h00, 11h00...)
       for (let t = debutPlage; t + dureeMinutes <= finPlage; t += dureeMinutes) {
         if (t >= heureActuelle) {
           creneauxPossibles.push(t);
@@ -191,10 +191,12 @@ const getCreneauxDisponibles = async (req, res) => {
     const creneaux = creneauxPossibles.filter(creneau => {
       const finCreneau = creneau + dureeMinutes;
       
-      // Vérifier qu'il n'y a pas de conflit avec les plages bloquées
-      const conflit = plagesBloquees.some(p => 
-        Math.max(creneau, p.debut) < Math.min(finCreneau, p.fin)
-      );
+      // Vérifier qu'il n'y a AUCUN chevauchement avec les plages bloquées
+      // Le créneau est valide UNIQUEMENT si [creneau, finCreneau[ ne touche AUCUNE plage bloquée
+      const conflit = plagesBloquees.some(p => {
+        // Chevauchement si : max(debut1, debut2) < min(fin1, fin2)
+        return Math.max(creneau, p.debut) < Math.min(finCreneau, p.fin);
+      });
       
       return !conflit;
     }).map(m => fromMinutes(m));
