@@ -3,12 +3,14 @@ const db = require('../db');
 // 📋 GET /api/departements - Récupérer tous les départements de la table master
 const getAllDepartements = async (req, res) => {
   try {
-    const result = await db.query(`
-      SELECT id, nom, code_postal, mode, adresse, actif
-      FROM departement
-      WHERE actif = TRUE
-      ORDER BY nom ASC
-    `);
+    // Permettre de récupérer tous les départements (y compris inactifs) pour l'admin
+    const includeInactive = req.query.all === 'true';
+    
+    const query = includeInactive 
+      ? `SELECT id, nom, code_postal, mode, adresse, actif FROM departement ORDER BY nom ASC`
+      : `SELECT id, nom, code_postal, mode, adresse, actif FROM departement WHERE actif = TRUE ORDER BY nom ASC`;
+    
+    const result = await db.query(query);
     res.json(result.rows);
   } catch (error) {
     console.error('Erreur getAllDepartements:', error);
