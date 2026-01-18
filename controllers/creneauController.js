@@ -191,17 +191,21 @@ const getCreneauxDisponibles = async (req, res) => {
       finsDeReservations.push(fin); // 👈 Ajouter la fin
     }
 
-    // 5b. Ajouter des créneaux qui commencent exactement après chaque réservation/indisponibilité
+    // 5b. Pour chaque fin de réservation/indisponibilité, générer des créneaux avec le pas
     for (const finResa of finsDeReservations) {
-      // Vérifier que ce créneau est dans une plage horaire valide
-      const dansPlage = plagesHoraires.some(plage => {
+      // Vérifier dans quelle plage horaire on se trouve
+      for (const plage of plagesHoraires) {
         const debutPlage = toMinutes(plage.heure_debut);
         const finPlage = toMinutes(plage.heure_fin);
-        return finResa >= debutPlage && finResa + dureeMinutes <= finPlage;
-      });
-      
-      if (dansPlage && finResa >= heureActuelle && !creneauxPossibles.includes(finResa)) {
-        creneauxPossibles.push(finResa);
+        
+        // Si la fin de réservation est dans cette plage, générer à partir de là
+        if (finResa >= debutPlage && finResa < finPlage) {
+          for (let t = finResa; t + dureeMinutes <= finPlage; t += dureeMinutes) {
+            if (t >= heureActuelle && !creneauxPossibles.includes(t)) {
+              creneauxPossibles.push(t);
+            }
+          }
+        }
       }
     }
 
