@@ -49,17 +49,30 @@ function withAppTimeout(promise, ms = 60000) { // ← 60s au lieu de 15s
 }
 
 async function sendMail({ to, subject, text, html }) {
-  return withRetry(() =>
-    withAppTimeout(
-      transporter.sendMail({
-        from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
-        to,
-        subject,
-        text,
-        html,
-      })
-    )
-  );
+  // Si les variables d'environnement SMTP ne sont pas configurées, ne pas bloquer
+  if (!process.env.SMTP_HOST || !process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.warn('⚠️ Configuration SMTP manquante - Email non envoyé:', { to, subject });
+    return { warning: 'SMTP not configured' };
+  }
+
+  try {
+    return await withRetry(() =>
+      withAppTimeout(
+        transporter.sendMail({
+          from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+          to,
+          subject,
+          text,
+          html,
+        }),
+        30000 // Réduire timeout à 30s
+      )
+    );
+  } catch (error) {
+    // Logger l'erreur mais ne pas faire planter l'application
+    console.error('❌ Erreur envoi email (non-bloquant):', error.message);
+    return { error: error.message };
+  }
 }
 
 module.exports = { sendMail };
