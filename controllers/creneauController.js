@@ -210,7 +210,12 @@ const getCreneauxDisponibles = async (req, res) => {
     }
 
     // 6. Filtrer les créneaux disponibles
-    const creneaux = creneauxPossibles.filter(creneau => {
+    const creneaux = creneauxPossibles
+    .filter((creneau, index, self) => {
+      // Supprimer les doublons
+      return self.indexOf(creneau) === index;
+    })
+    .filter(creneau => {
       const finCreneau = creneau + dureeMinutes;
       
       // Vérifier qu'il n'y a AUCUN chevauchement avec les plages bloquées
@@ -223,6 +228,13 @@ const getCreneauxDisponibles = async (req, res) => {
       return !conflit;
     })
     .sort((a, b) => a - b) // 👈 Trier par ordre chronologique
+    .filter((creneau, index, sorted) => {
+      // 🎯 Supprimer les créneaux qui cassent le pas régulier
+      // Si deux créneaux sont trop proches (< durée de prestation), garder seulement le premier
+      if (index === 0) return true;
+      const precedent = sorted[index - 1];
+      return (creneau - precedent) >= dureeMinutes;
+    })
     .map(m => fromMinutes(m));
 
     return res.json(creneaux);
