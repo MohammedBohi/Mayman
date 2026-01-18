@@ -15,7 +15,7 @@ async function testEmail() {
 
   try {
     const result = await sendMail({
-      to: 'mohamedbohi2001@gmail.com',
+      to: 'mayliss.mazet24@gmail.com',
       subject: '🧪 Test SMTP Brevo - May\'Man',
       text: 'Ceci est un email de test pour vérifier la configuration SMTP avec Brevo.',
       html: '<h1>✅ Test réussi !</h1><p>Si vous recevez cet email, la configuration SMTP fonctionne correctement.</p>'
