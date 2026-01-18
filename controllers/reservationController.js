@@ -276,7 +276,7 @@ const creerReservation = async (req, res) => {
       return `👤 ${p.nom} ${p.prenom} : ${prestation.nom} ${p.avec_soin ? "(+ soin)" : ""} - ${prixTotalPerso.toFixed(2)} €`;
     }).join('\n');
 
-    const modeTexte = mode === 'SALON' ? '🏠 Au salon' : `📍 À domicile (${departement})`;
+    const modeTexte = mode === 'SALON' ? '🏠 Au salon' : `📍 À domicile (${codeDepartement || 'département'})`;
 
     const contenuMail = `
 Bonjour ${nom} ${prenom},
