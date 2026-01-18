@@ -231,7 +231,11 @@ const creerReservation = async (req, res) => {
       const [hr, mr] = resv.heure_debut.split(':').map(Number);
       const resvDebut = hr * 60 + mr;
       const resvFin = resvDebut + resv.duree_totale_minutes;
-      if (Math.max(debutMinutes, resvDebut) < Math.min(finMinutes, resvFin)) {
+      
+      // Conflit si les créneaux se chevauchent (mais pas s'ils se touchent juste)
+      // Ex: OK si réservation1 finit à 10h30 et réservation2 commence à 10h30
+      const overlap = (debutMinutes < resvFin) && (finMinutes > resvDebut);
+      if (overlap) {
         return res.status(400).json({ error: "Conflit avec une autre réservation." });
       }
     }
