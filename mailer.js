@@ -1,37 +1,46 @@
 // mailer.js
 const nodemailer = require('nodemailer');
 
-const PORT = Number(process.env.SMTP_PORT || 465);
+const PORT = Number(process.env.SMTP_PORT || 587);
 
 console.log('📧 Configuration SMTP:', {
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
   port: PORT,
   user: process.env.EMAIL_USER ? '✓ configuré' : '✗ manquant',
   pass: process.env.EMAIL_PASS ? '✓ configuré' : '✗ manquant',
+  from: process.env.EMAIL_FROM || 'non défini'
 });
 
 const transporter = nodemailer.createTransport({
-  // ✅ robuste sur Railway : on explicite host/port
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: PORT,                 // 465 = TLS direct ; 587 = STARTTLS
-  secure: PORT === 465,       // true ↔ 465 ; false ↔ 587
+  // ✅ Configuration optimisée pour Brevo
+  host: process.env.SMTP_HOST || 'smtp-relay.brevo.com',
+  port: PORT,
+  secure: false,              // false pour port 587 (STARTTLS)
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS, // mot de passe d'application ou clé API SMTP
+    pass: process.env.EMAIL_PASS,
   },
 
-  // ♻️ pool = réutilisation de connexions (perf + stabilité)
+  // ♻️ Pool de connexions pour stabilité
   pool: true,
-  maxConnections: 1,          // ← réduit pour stabilité
-  maxMessages: 50,
-  keepAlive: true,            // ← réutiliser la connexion
+  maxConnections: 5,
+  maxMessages: 100,
 
-  // 🧯 anti-ETIMEDOUT (forçage IPv4 + timeouts)
-  family: 4,                  // force IPv4 (évite IPv6 capricieux)
-  connectionTimeout: 20000,
-  greetingTimeout: 10000,
-  socketTimeout: 30000,
-  dnsTimeout: 10000,
+  // 🧯 Timeouts augmentés pour Railway/Brevo
+  connectionTimeout: 60000,   // 60s
+  greetingTimeout: 30000,     // 30s
+  socketTimeout: 60000,       // 60s
+
+  // Forçage IPv4 + options TLS
+  family: 4,
+  tls: {
+    rejectUnauthorized: true,
+    minVersion: 'TLSv1.2'
+  },
+
+  // Logs détaillés (désactiver en prod si besoin)
+  logger: process.env.NODE_ENV !== 'production',
+  debug: process.env.NODE_ENV !== 'production'
 });
 
 // ——— utilitaires robustesse ———
@@ -63,21 +72,30 @@ async function sendMail({ to, subject, text, html }) {
   }
 
   try {
-    return await withRetry(() =>
+    console.log(`📤 Tentative d'envoi email à: ${to}`);
+    const result = await withRetry(() =>
       withAppTimeout(
         transporter.sendMail({
-          from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+          from: `"May'Man" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
           to,
           subject,
           text,
           html,
         }),
-        30000 // Réduire timeout à 30s
+        60000 // 60s de timeout
       )
     );
+    console.log(`✅ Email envoyé avec succès à: ${to}`);
+    return result;
   } catch (error) {
-    // Logger l'erreur mais ne pas faire planter l'application
-    console.error('❌ Erreur envoi email (non-bloquant):', error.message);
+    // Logger l'erreur détaillée mais ne pas faire planter l'application
+    console.error('❌ Erreur envoi email (non-bloquant):', {
+      to,
+      subject,
+      error: error.message,
+      code: error.code,
+      command: error.command
+    });
     return { error: error.message };
   }
 }
