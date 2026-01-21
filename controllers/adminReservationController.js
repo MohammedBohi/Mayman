@@ -199,8 +199,10 @@ const creerReservationPourClient = async (req, res) => {
       tarifTotal += parseFloat(prestation.prix) + (avecSoin ? 10 : 0);
     }
 
-    // +20 min de déplacement/tampon
-    dureeTotale += 20;
+    // +20 min de déplacement uniquement pour DOMICILE
+    if (mode === 'DOMICILE') {
+      dureeTotale += 20;
+    }
 
     const [h, m] = heure_debut.split(':').map(Number);
     const debutMinutes = h * 60 + m;
