@@ -8,28 +8,25 @@ const getReservationsParJour = async (req, res) => {
 
     try {
      const result = await db.query(`
-    SELECT 
+    SELECT DISTINCT ON (r.id)
         r.*,
-        COUNT(rp.id) AS nombre_personnes,
         phd.nom AS departement_nom,
         phd.code_postal AS departement_code,
         COALESCE(
-            JSON_AGG(
+            (SELECT JSON_AGG(
                 JSON_BUILD_OBJECT(
-                    'nom', rp.nom,
-                    'prenom', rp.prenom,
-                    'prestation_id', rp.prestation_id,
-                    'avec_soin', rp.avec_soin
+                    'nom', rp2.nom,
+                    'prenom', rp2.prenom,
+                    'prestation_id', rp2.prestation_id,
+                    'avec_soin', rp2.avec_soin
                 )
-            ) FILTER (WHERE rp.id IS NOT NULL),
+            ) FROM reservation_personne rp2 WHERE rp2.reservation_id = r.id),
             '[]'
         ) AS personnes
     FROM reservation r
-    LEFT JOIN reservation_personne rp ON rp.reservation_id = r.id
     LEFT JOIN planning_hebdo_departement phd ON (phd.code_postal LIKE r.departement || '%' OR phd.code_postal = r.departement)
     WHERE r.jour = $1
-    GROUP BY r.id, phd.nom, phd.code_postal
-    ORDER BY r.heure_debut ASC
+    ORDER BY r.id, r.heure_debut ASC
 `, [jour]);
         res.json(result.rows);
     } catch (error) {
