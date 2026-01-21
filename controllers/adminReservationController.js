@@ -170,7 +170,7 @@ const creerReservationPourClient = async (req, res) => {
         : 'planning_hebdo_id';
         
       const deptCheck = await db.query(
-        `SELECT * FROM ${tableDept} WHERE ${idColumn} = $1 AND code LIKE $2`,
+        `SELECT * FROM ${tableDept} WHERE ${idColumn} = $1 AND code_postal LIKE $2`,
         [planningId, codeDepartement + '%']
       );
       
