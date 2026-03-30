@@ -8,31 +8,24 @@ const { validateJourSemaine, validateMode, validatePlageHoraire } = require('../
 const getAllPlannings = async (req, res) => {
   try {
     const plannings = await db.query(`
-      SELECT ph.*, 
+      SELECT ph.*,
         COALESCE(
-          JSON_AGG(
-            JSON_BUILD_OBJECT(
-              'id', php.id,
-              'heure_debut', php.heure_debut,
-              'heure_fin', php.heure_fin
-            )
-          ) FILTER (WHERE php.id IS NOT NULL),
-          '[]'
+          (SELECT JSON_AGG(JSON_BUILD_OBJECT(
+            'id', php.id,
+            'heure_debut', php.heure_debut,
+            'heure_fin', php.heure_fin
+          )) FROM planning_hebdo_plage php WHERE php.planning_hebdo_id = ph.id),
+          '[]'::json
         ) AS plages,
         COALESCE(
-          JSON_AGG(
-            JSON_BUILD_OBJECT(
-              'id', phd.id,
-              'code_postal', phd.code_postal,
-              'nom', phd.nom
-            )
-          ) FILTER (WHERE phd.id IS NOT NULL),
-          '[]'
+          (SELECT JSON_AGG(JSON_BUILD_OBJECT(
+            'id', phd.id,
+            'code_postal', phd.code_postal,
+            'nom', phd.nom
+          )) FROM planning_hebdo_departement phd WHERE phd.planning_hebdo_id = ph.id),
+          '[]'::json
         ) AS departements
       FROM planning_hebdo ph
-      LEFT JOIN planning_hebdo_plage php ON php.planning_hebdo_id = ph.id
-      LEFT JOIN planning_hebdo_departement phd ON phd.planning_hebdo_id = ph.id
-      GROUP BY ph.id
       ORDER BY ph.jour_semaine ASC
     `);
 
@@ -59,30 +52,23 @@ const getPlanningByJour = async (req, res) => {
     const planning = await db.query(`
       SELECT ph.*,
         COALESCE(
-          JSON_AGG(
-            JSON_BUILD_OBJECT(
-              'id', php.id,
-              'heure_debut', php.heure_debut,
-              'heure_fin', php.heure_fin
-            )
-          ) FILTER (WHERE php.id IS NOT NULL),
-          '[]'
+          (SELECT JSON_AGG(JSON_BUILD_OBJECT(
+            'id', php.id,
+            'heure_debut', php.heure_debut,
+            'heure_fin', php.heure_fin
+          )) FROM planning_hebdo_plage php WHERE php.planning_hebdo_id = ph.id),
+          '[]'::json
         ) AS plages,
         COALESCE(
-          JSON_AGG(
-            JSON_BUILD_OBJECT(
-              'id', phd.id,
-              'code_postal', phd.code_postal,
-              'nom', phd.nom
-            )
-          ) FILTER (WHERE phd.id IS NOT NULL),
-          '[]'
+          (SELECT JSON_AGG(JSON_BUILD_OBJECT(
+            'id', phd.id,
+            'code_postal', phd.code_postal,
+            'nom', phd.nom
+          )) FROM planning_hebdo_departement phd WHERE phd.planning_hebdo_id = ph.id),
+          '[]'::json
         ) AS departements
       FROM planning_hebdo ph
-      LEFT JOIN planning_hebdo_plage php ON php.planning_hebdo_id = ph.id
-      LEFT JOIN planning_hebdo_departement phd ON phd.planning_hebdo_id = ph.id
       WHERE ph.jour_semaine = $1
-      GROUP BY ph.id
     `, [jour]);
 
     if (planning.rows.length === 0) {

@@ -10,29 +10,22 @@ const getAllExceptions = async (req, res) => {
     const exceptions = await db.query(`
       SELECT pe.*,
         COALESCE(
-          JSON_AGG(
-            JSON_BUILD_OBJECT(
-              'id', pep.id,
-              'heure_debut', pep.heure_debut,
-              'heure_fin', pep.heure_fin
-            )
-          ) FILTER (WHERE pep.id IS NOT NULL),
-          '[]'
+          (SELECT JSON_AGG(JSON_BUILD_OBJECT(
+            'id', pep.id,
+            'heure_debut', pep.heure_debut,
+            'heure_fin', pep.heure_fin
+          )) FROM planning_exception_plage pep WHERE pep.planning_exception_id = pe.id),
+          '[]'::json
         ) AS plages,
         COALESCE(
-          JSON_AGG(DISTINCT
-            JSON_BUILD_OBJECT(
-              'id', ped.id,
-              'code_postal', ped.code_postal,
-              'nom', ped.nom
-            )
-          ) FILTER (WHERE ped.id IS NOT NULL),
-          '[]'
+          (SELECT JSON_AGG(JSON_BUILD_OBJECT(
+            'id', ped.id,
+            'code_postal', ped.code_postal,
+            'nom', ped.nom
+          )) FROM planning_exception_departement ped WHERE ped.planning_exception_id = pe.id),
+          '[]'::json
         ) AS departements
       FROM planning_exception pe
-      LEFT JOIN planning_exception_plage pep ON pep.planning_exception_id = pe.id
-      LEFT JOIN planning_exception_departement ped ON ped.planning_exception_id = pe.id
-      GROUP BY pe.id
       ORDER BY pe.date ASC
     `);
 
@@ -59,30 +52,23 @@ const getExceptionByDate = async (req, res) => {
     const exception = await db.query(`
       SELECT pe.*,
         COALESCE(
-          JSON_AGG(
-            JSON_BUILD_OBJECT(
-              'id', pep.id,
-              'heure_debut', pep.heure_debut,
-              'heure_fin', pep.heure_fin
-            )
-          ) FILTER (WHERE pep.id IS NOT NULL),
-          '[]'
+          (SELECT JSON_AGG(JSON_BUILD_OBJECT(
+            'id', pep.id,
+            'heure_debut', pep.heure_debut,
+            'heure_fin', pep.heure_fin
+          )) FROM planning_exception_plage pep WHERE pep.planning_exception_id = pe.id),
+          '[]'::json
         ) AS plages,
         COALESCE(
-          JSON_AGG(DISTINCT
-            JSON_BUILD_OBJECT(
-              'id', ped.id,
-              'code_postal', ped.code_postal,
-              'nom', ped.nom
-            )
-          ) FILTER (WHERE ped.id IS NOT NULL),
-          '[]'
+          (SELECT JSON_AGG(JSON_BUILD_OBJECT(
+            'id', ped.id,
+            'code_postal', ped.code_postal,
+            'nom', ped.nom
+          )) FROM planning_exception_departement ped WHERE ped.planning_exception_id = pe.id),
+          '[]'::json
         ) AS departements
       FROM planning_exception pe
-      LEFT JOIN planning_exception_plage pep ON pep.planning_exception_id = pe.id
-      LEFT JOIN planning_exception_departement ped ON ped.planning_exception_id = pe.id
       WHERE pe.date = $1
-      GROUP BY pe.id
     `, [date]);
 
     if (exception.rows.length === 0) {
