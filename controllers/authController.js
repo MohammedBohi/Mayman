@@ -155,7 +155,7 @@ exports.reinitialiserMotDePasse = async (req, res) => {
     // Envoi email de confirmation après réponse
     setImmediate(async () => {
       try {
-        const transporter = nodemailer.createTransporter({
+        const transporter = nodemailer.createTransport({
           service: 'gmail',
           auth: {
             user: process.env.EMAIL_USER,

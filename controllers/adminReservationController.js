@@ -195,7 +195,7 @@ const creerReservationPourClient = async (req, res) => {
       if (!prestation) return res.status(400).json({ error: `Prestation ID ${p.prestation_id} introuvable.` });
 
       const avecSoin = mode === 'SALON' && prestation.soin_disponible && p.avec_soin;
-      dureeTotale += prestation.duree_minutes + (avecSoin ? 10 : 0);
+      dureeTotale += prestation.duree_minutes + (avecSoin ? 15 : 0);
       tarifTotal += parseFloat(prestation.prix) + (avecSoin ? 10 : 0);
     }
 
@@ -267,7 +267,7 @@ const creerReservationPourClient = async (req, res) => {
     const resumePersonnes = personnes.map((p) => {
       const prestation = prestationsMap[p.prestation_id];
       const prix = Number(prestation.prix);
-      const prixTotalPerso = prix + (p.avec_soin ? 7 : 0);
+      const prixTotalPerso = prix + (p.avec_soin ? 10 : 0);
       return `👤 ${p.nom} ${p.prenom} : ${prestation.nom} ${p.avec_soin ? "(+ soin)" : ""} - ${prixTotalPerso.toFixed(2)} €`;
     }).join('\n');
 

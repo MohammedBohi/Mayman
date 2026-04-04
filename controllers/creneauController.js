@@ -47,8 +47,8 @@ const getCreneauxDisponibles = async (req, res) => {
   }
 
   try {
-    const dureeMinutes = parseInt(duree);
     const codeDepartement = extraireCodeDepartement(departementParam);
+    let dureeMinutes = parseInt(duree);
 
     const toMinutes = (heure) => {
       const [h, m] = heure.split(":").map(Number);
@@ -96,7 +96,7 @@ const getCreneauxDisponibles = async (req, res) => {
       // Si mode DOMICILE, vérifier le département
       if (planningMode === 'DOMICILE' && codeDepartement) {
         const deptCheck = await db.query(
-          'SELECT * FROM planning_exception_departement WHERE planning_exception_id = $1 AND code LIKE $2',
+          'SELECT * FROM planning_exception_departement WHERE planning_exception_id = $1 AND code_postal LIKE $2',
           [exc.id, codeDepartement + '%']
         );
         if (deptCheck.rows.length === 0) {
@@ -129,7 +129,7 @@ const getCreneauxDisponibles = async (req, res) => {
       // Si mode DOMICILE, vérifier le département
       if (planningMode === 'DOMICILE' && codeDepartement) {
         const deptCheck = await db.query(
-          'SELECT * FROM planning_hebdo_departement WHERE planning_hebdo_id = $1 AND code LIKE $2',
+          'SELECT * FROM planning_hebdo_departement WHERE planning_hebdo_id = $1 AND code_postal LIKE $2',
           [hebdo.rows[0].id, codeDepartement + '%']
         );
         if (deptCheck.rows.length === 0) {
@@ -138,12 +138,17 @@ const getCreneauxDisponibles = async (req, res) => {
       }
     }
 
-    // 3. Générer les créneaux possibles à partir des plages horaires
+    // 3. Ajouter 20 min de déplacement pour le mode DOMICILE
+    if (planningMode === 'DOMICILE') {
+      dureeMinutes += 20;
+    }
+
+    // 4. Générer les créneaux possibles à partir des plages horaires
     const maintenant = new Date();
     const aujourdHui = maintenant.toISOString().split("T")[0] === dateParam;
     const heureActuelle = aujourdHui ? maintenant.getHours() * 60 + maintenant.getMinutes() : 0;
 
-    // 4. Récupérer les indisponibilités
+    // 5. Récupérer les indisponibilités
     const indispos = await db.query(
       'SELECT heure_debut, heure_fin FROM indisponibilite WHERE jour = $1',
       [dateParam]
@@ -157,7 +162,7 @@ const getCreneauxDisponibles = async (req, res) => {
       plagesBloquees.push({ debut, fin });
     }
 
-    // 5. Récupérer les réservations existantes
+    // 6. Récupérer les réservations existantes
     const reservations = await db.query(
       'SELECT heure_debut, duree_totale_minutes FROM reservation WHERE jour = $1',
       [dateParam]
@@ -172,7 +177,7 @@ const getCreneauxDisponibles = async (req, res) => {
     // Trier les plages bloquées par ordre chronologique
     plagesBloquees.sort((a, b) => a.debut - b.debut);
 
-    // 6. Générer les créneaux en parcourant intelligemment les plages horaires
+    // 7. Générer les créneaux en parcourant intelligemment les plages horaires
     let creneauxPossibles = [];
     
     for (const plage of plagesHoraires) {
@@ -200,7 +205,7 @@ const getCreneauxDisponibles = async (req, res) => {
       }
     }
 
-    // 7. Formater et retourner les créneaux
+    // 8. Formater et retourner les créneaux
     const creneaux = creneauxPossibles
       .sort((a, b) => a - b)
       .map(m => fromMinutes(m));
