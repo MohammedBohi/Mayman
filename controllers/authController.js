@@ -2,12 +2,19 @@ require('dotenv').config();
 const db = require('../db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const nodemailer = require('nodemailer');
+const { sendMail } = require('../mailer');
+const { validateEmail } = require('../utils/validations');
 
 exports.inscrireUtilisateur = async (req, res) => {
   const { nom, prenom, email, motdepasse, typeutilisateur } = req.body;
 
   try {
+    // Validation du format email
+    const emailValidation = validateEmail(email);
+    if (!emailValidation.valid) {
+      return res.status(400).json({ error: emailValidation.error });
+    }
+
     const existing = await db.query('SELECT * FROM utilisateur WHERE email = $1', [email]);
     if (existing.rows.length > 0) {
       return res.status(400).json({ error: "Email déjà utilisé." });
@@ -79,6 +86,12 @@ exports.demanderResetMotDePasse = async (req, res) => {
   const { email } = req.body;
 
   try {
+    // Validation du format email
+    const emailValidation = validateEmail(email);
+    if (!emailValidation.valid) {
+      return res.status(400).json({ error: emailValidation.error });
+    }
+
     const user = await db.query('SELECT * FROM utilisateur WHERE email = $1', [email]);
     if (user.rows.length === 0) {
       return res.status(404).json({ error: "Email non trouvé." });
@@ -94,20 +107,11 @@ exports.demanderResetMotDePasse = async (req, res) => {
       [resetCode, resetExpiry, user.rows[0].id]
     );
 
-    // Envoyer l'email avec le code
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-      }
-    });
-
-    await transporter.sendMail({
-      from: process.env.EMAIL_USER,
+    // Envoyer l'email avec le code via Brevo
+    await sendMail({
       to: email,
-      subject: '🔐 Code de réinitialisation du mot de passe',
-      text: `Bonjour ${user.rows[0].prenom} ${user.rows[0].nom},\n\nVoici votre code de réinitialisation : ${resetCode}\n\nCe code expire dans 15 minutes.\n\nSi vous n'avez pas demandé cette réinitialisation, ignorez cet email.\n\nÀ bientôt 👋`
+      subject: 'Code de réinitialisation du mot de passe',
+      text: `Bonjour ${user.rows[0].prenom} ${user.rows[0].nom},\n\nVoici votre code de réinitialisation : ${resetCode}\n\nCe code expire dans 15 minutes.\n\nSi vous n'avez pas demandé cette réinitialisation, ignorez cet email.`
     });
 
     res.json({ message: "Code de réinitialisation envoyé par email." });
@@ -155,19 +159,10 @@ exports.reinitialiserMotDePasse = async (req, res) => {
     // Envoi email de confirmation après réponse
     setImmediate(async () => {
       try {
-        const transporter = nodemailer.createTransport({
-          service: 'gmail',
-          auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS
-          }
-        });
-
-        await transporter.sendMail({
-          from: process.env.EMAIL_USER,
+        await sendMail({
           to: userData.email,
-          subject: '✅ Mot de passe réinitialisé',
-          text: `Bonjour ${userData.prenom} ${userData.nom},\n\nVotre mot de passe a bien été modifié avec succès ✅\n\nSi vous n'êtes pas à l'origine de cette modification, contactez-nous immédiatement.\n\nÀ bientôt 👋`
+          subject: 'Mot de passe réinitialisé',
+          text: `Bonjour ${userData.prenom} ${userData.nom},\n\nVotre mot de passe a bien été modifié avec succès.\n\nSi vous n'êtes pas à l'origine de cette modification, contactez-nous immédiatement.`
         });
       } catch (e) {
         console.error('Erreur envoi email confirmation mot de passe:', e);
@@ -213,19 +208,10 @@ exports.changerMotDePasse = async (req, res) => {
     // Envoi email de confirmation après réponse
     setImmediate(async () => {
       try {
-        const transporter = nodemailer.createTransport({
-          service: 'gmail',
-          auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS
-          }
-        });
-
-        await transporter.sendMail({
-          from: process.env.EMAIL_USER,
+        await sendMail({
           to: user.rows[0].email,
-          subject: '🔐 Mot de passe modifié',
-          text: `Bonjour ${user.rows[0].prenom} ${user.rows[0].nom},\n\nVotre mot de passe a bien été modifié avec succès ✅\n\nSi vous n'êtes pas à l'origine de cette modification, contactez-nous immédiatement.\n\nÀ bientôt 👋`
+          subject: 'Mot de passe modifié',
+          text: `Bonjour ${user.rows[0].prenom} ${user.rows[0].nom},\n\nVotre mot de passe a bien été modifié avec succès.\n\nSi vous n'êtes pas à l'origine de cette modification, contactez-nous immédiatement.`
         });
       } catch (e) {
         console.error('Erreur envoi email confirmation changement mdp:', e);

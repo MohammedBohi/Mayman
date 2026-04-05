@@ -327,7 +327,7 @@ ${resumePersonnes}
           });
         }
         await sendMail({
-          to: 'mayliss.mazet24@gmail.com',
+          to: process.env.ADMIN_EMAIL,
           subject: '🆕 Nouvelle réservation reçue',
           text: contenuMailAdmin
         });
@@ -408,7 +408,7 @@ Merci de nous avoir prévenus.
           });
         }
         await sendMail({
-          to: 'mayliss.mazet24@gmail.com',
+          to: process.env.ADMIN_EMAIL,
           subject: '❌ Annulation d’une réservation',
           text: contenuMailAdmin
         });

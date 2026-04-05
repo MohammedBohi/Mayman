@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
+const rateLimit = require("express-rate-limit");
 
 dotenv.config();
 
@@ -33,6 +34,24 @@ app.use(cors(corsOptions));
 console.log("🌍 Origines autorisées :", corsOptions.origin);
 
 app.use(express.json());
+
+// Rate limiting global (100 requêtes / 15 min par IP)
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { error: "Trop de requêtes, réessayez plus tard." }
+});
+
+// Rate limiting strict pour auth (5 tentatives / 15 min par IP)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: "Trop de tentatives, réessayez dans 15 minutes." }
+});
+
+app.use("/api", globalLimiter);
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/reset-password", authLimiter);
 
 // ✅ Import des routes
 const authRoutes = require('./routes/authRoutes');

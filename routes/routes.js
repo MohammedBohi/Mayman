@@ -208,7 +208,7 @@ router.post('/reservations', authenticateUser, async (req, res) => {
             subject: '✔️ Confirmation de votre réservation',
             text: `Bonjour ${nom} ${prenom},\n\nVotre réservation a bien été enregistrée ! 🎉\n\n📌 Détails :\n- 🏷 Prestation : ${prestation}\n- 💰 Tarif : ${tarif}€\n- 📅 Date : ${formattedDate}\n- ⏰ Créneau : ${creneau}\n- 📍 Adresse : ${adresseReservation}\n- 💳 Paiement : ${typePaiement} (en espèce) \n\nMerci pour votre confiance !\n⚠️ En cas d'empêchement ou si vous souhaitez modifier votre rendez-vous, veuillez nous en informer le plus tôt possible.\n\n
 📞 Numéro de téléphone : +33 7 68 44 16 10\n
-📧 Adresse e-mail : mayliss.mazet24@gmail.com\n\n
+📧 Adresse e-mail : ${process.env.ADMIN_EMAIL}\n\n
 Merci pour votre confiance !\n
 L'équipe May'Man.`
         };
@@ -218,7 +218,7 @@ L'équipe May'Man.`
 
         const emailAdmin = {
             from: process.env.EMAIL_USER,
-            to: 'mayliss.mazet24@gmail.com', 
+            to: process.env.ADMIN_EMAIL,
             subject: ' Nouvelle réservation',
             text: `📢 Une nouvelle réservation a été effectuée :\n\n- 👤 Client : ${nom} ${prenom}\n- 🏷 Prestation : ${prestation}\n- 💰 Tarif : ${tarif}€\n- 📅 Date : ${formattedDate}\n- ⏰ Créneau : ${creneau}\n- 📍 Adresse : ${adresseReservation}\n- 📞 Téléphone : ${telephone}\n- 💳 Paiement : ${typePaiement}\n- 📌 Département : ${departement}\n\n📌 Vérifiez votre tableau de bord.`
         };
@@ -410,7 +410,7 @@ L'équipe May'Man.`
         // **Email à l'admin**
         const emailAdmin = {
             from: process.env.EMAIL_USER,
-            to: 'mayliss.mazet24@gmail.com',
+            to: process.env.ADMIN_EMAIL,
             subject: 'Annulation d\'une réservation',
             text: `Une réservation a été annulée :
 
@@ -525,7 +525,7 @@ L'équipe May'Man.`
         // **Email à l'admin**
         const emailAdmin = {
             from: process.env.EMAIL_USER,
-            to: 'mayliss.mazet24@gmail.com',
+            to: process.env.ADMIN_EMAIL,
             subject: 'Annulation d\'une réservation',
             text: `Une réservation a été annulée par vous :
 
@@ -744,7 +744,7 @@ router.get('/paiement/statut/:sessionId', authenticateUser, async (req, res) => 
                     subject: '✔️ Confirmation de votre réservation',
                     text: `Bonjour ${nom} ${prenom},\n\nVotre réservation a bien été enregistrée après votre paiement en ligne ! 🎉\n\n📌 Détails :\n- 🏷 Prestation : ${prestation}\n- 💰 Tarif : ${tarif}€\n- 📅 Date : ${formattedDate}\n- ⏰ Créneau : ${creneau}\n- 📍 Adresse : ${adresseReservation}\n- 💳 Paiement : En ligne\n\n⚠️ En cas d'empêchement ou si vous souhaitez modifier votre rendez-vous, veuillez nous en informer le plus tôt possible.\n\n
 📞 Numéro de téléphone : +33 7 68 44 16 10\n
-📧 Adresse e-mail : mayliss.mazet24@gmail.com\n\n
+📧 Adresse e-mail : ${process.env.ADMIN_EMAIL}\n\n
 Merci pour votre confiance !\n
 L'équipe May'Man.`
                 };
@@ -758,7 +758,7 @@ L'équipe May'Man.`
         try {
             const emailAdmin = {
                 from: process.env.EMAIL_USER,
-                to: 'mayliss.mazet24@gmail.com', // 🔥 Remplace par l'email de l'admin si besoin
+                to: process.env.ADMIN_EMAIL,// 🔥 Remplace par l'email de l'admin si besoin
                 subject: '⚡ Nouvelle réservation après paiement en ligne',
                 text: `📢 Une nouvelle réservation a été validée après paiement :\n\n- 👤 Client : ${nom} ${prenom}\n- 🏷 Prestation : ${prestation}\n- 💰 Tarif : ${tarif}€\n- 📅 Date : ${formattedDate}\n- ⏰ Créneau : ${creneau}\n- 📍 Adresse : ${adresseReservation}\n- 📞 Téléphone : ${telephone}\n- 💳 Paiement : En ligne\n- 📌 Département :${departement}`
             };

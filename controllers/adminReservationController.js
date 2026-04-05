@@ -301,7 +301,7 @@ ${resumePersonnes}
           });
         }
         await sendMail({
-          to: 'mayliss.mazet24@gmail.com',
+          to: process.env.ADMIN_EMAIL,
           subject: '📌 Réservation créée ',
           text: contenuMail
         });
@@ -378,7 +378,7 @@ Une réservation a été annulée par l’administrateur.
 📞 Tel : ${reservation.telephone}
         `;
         await sendMail({
-          to: 'mayliss.mazet24@gmail.com',
+          to: process.env.ADMIN_EMAIL,
           subject: '❌ Réservation annulée par l’admin',
           text: contenuCoiffeuse
         });

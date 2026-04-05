@@ -87,6 +87,20 @@ const validateDate = (date) => {
 };
 
 /**
+ * Valide un format d'email
+ */
+const validateEmail = (email) => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!email) {
+    return { valid: false, error: "L'email est requis" };
+  }
+  if (!emailRegex.test(email)) {
+    return { valid: false, error: "Format d'email invalide" };
+  }
+  return { valid: true };
+};
+
+/**
  * Valide un code département français ou code postal
  */
 const validateCodeDepartement = (code) => {
@@ -108,5 +122,6 @@ module.exports = {
   validatePlageHoraire,
   validateJourSemaine,
   validateDate,
-  validateCodeDepartement
+  validateCodeDepartement,
+  validateEmail
 };
