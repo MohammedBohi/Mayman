@@ -217,6 +217,155 @@ const getCreneauxDisponibles = async (req, res) => {
   }
 };
 
+// 📅 Disponibilité batch pour un mois entier (utilisé par le calendrier)
+const getDisponibiliteMois = async (req, res) => {
+  const { debut, fin, duree } = req.query;
+
+  if (!debut || !fin || !duree) {
+    return res.status(400).json({ error: "Paramètres 'debut', 'fin' et 'duree' requis." });
+  }
+
+  const validDebut = validateDate(debut);
+  const validFin = validateDate(fin);
+  if (!validDebut.valid) return res.status(400).json({ error: validDebut.error });
+  if (!validFin.valid) return res.status(400).json({ error: validFin.error });
+
+  try {
+    const dureeMinutes = parseInt(duree);
+
+    const toMinutes = (heure) => {
+      const [h, m] = heure.split(":").map(Number);
+      return h * 60 + m;
+    };
+
+    // 1. Fetch tout en batch (4-6 queries au lieu de ~150)
+    const [hebdoRes, exceptionsRes, indisposRes, reservationsRes] = await Promise.all([
+      db.query('SELECT ph.*, array_agg(json_build_object(\'heure_debut\', php.heure_debut, \'heure_fin\', php.heure_fin)) FILTER (WHERE php.id IS NOT NULL) as plages FROM planning_hebdo ph LEFT JOIN planning_hebdo_plage php ON php.planning_hebdo_id = ph.id GROUP BY ph.id'),
+      db.query('SELECT pe.*, array_agg(json_build_object(\'heure_debut\', pep.heure_debut, \'heure_fin\', pep.heure_fin)) FILTER (WHERE pep.id IS NOT NULL) as plages FROM planning_exception pe LEFT JOIN planning_exception_plage pep ON pep.planning_exception_id = pe.id WHERE pe.date BETWEEN $1 AND $2 GROUP BY pe.id', [debut, fin]),
+      db.query('SELECT jour, heure_debut, heure_fin FROM indisponibilite WHERE jour BETWEEN $1 AND $2', [debut, fin]),
+      db.query('SELECT jour, heure_debut, duree_totale_minutes FROM reservation WHERE jour BETWEEN $1 AND $2', [debut, fin]),
+    ]);
+
+    // Indexer planning hebdo par jour_semaine
+    const hebdoMap = {};
+    for (const row of hebdoRes.rows) {
+      hebdoMap[row.jour_semaine] = row;
+    }
+
+    // Indexer exceptions par date
+    const exceptionMap = {};
+    for (const row of exceptionsRes.rows) {
+      const dateStr = row.date instanceof Date
+        ? row.date.toISOString().split('T')[0]
+        : String(row.date);
+      exceptionMap[dateStr] = row;
+    }
+
+    // Grouper indispos par date
+    const indispoMap = {};
+    for (const row of indisposRes.rows) {
+      const dateStr = row.jour instanceof Date
+        ? row.jour.toISOString().split('T')[0]
+        : String(row.jour);
+      if (!indispoMap[dateStr]) indispoMap[dateStr] = [];
+      indispoMap[dateStr].push({ debut: toMinutes(row.heure_debut), fin: toMinutes(row.heure_fin) });
+    }
+
+    // Grouper réservations par date
+    const resaMap = {};
+    for (const row of reservationsRes.rows) {
+      const dateStr = row.jour instanceof Date
+        ? row.jour.toISOString().split('T')[0]
+        : String(row.jour);
+      if (!resaMap[dateStr]) resaMap[dateStr] = [];
+      const d = toMinutes(row.heure_debut);
+      resaMap[dateStr].push({ debut: d, fin: d + row.duree_totale_minutes });
+    }
+
+    // 2. Itérer sur chaque date de l'intervalle
+    const maintenant = new Date();
+    const aujourdHuiStr = maintenant.toISOString().split("T")[0];
+    const heureActuelleMinutes = maintenant.getHours() * 60 + maintenant.getMinutes();
+    const resultats = [];
+
+    const startDate = new Date(debut + 'T12:00:00');
+    const endDate = new Date(fin + 'T12:00:00');
+
+    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+      const dateStr = d.toISOString().split('T')[0];
+      const jourSemaine = d.getDay() || 7; // 0→7
+
+      // Déterminer le planning pour cette date (exception > hebdo)
+      let planningMode = null;
+      let planningActif = false;
+      let plagesHoraires = [];
+
+      const exc = exceptionMap[dateStr];
+      if (exc) {
+        planningActif = exc.actif;
+        planningMode = exc.mode;
+        plagesHoraires = exc.plages || [];
+      } else {
+        const hebdo = hebdoMap[jourSemaine];
+        if (hebdo) {
+          planningActif = hebdo.actif;
+          planningMode = hebdo.mode;
+          plagesHoraires = hebdo.plages || [];
+        }
+      }
+
+      // Si inactif → fermé
+      if (!planningActif) {
+        resultats.push({ date: dateStr, disponible: false, mode: null });
+        continue;
+      }
+
+      // Durée ajustée pour DOMICILE
+      const dureeAjustee = planningMode === 'DOMICILE' ? dureeMinutes + 20 : dureeMinutes;
+
+      // Construire les plages bloquées pour cette date
+      const plagesBloquees = [
+        ...(indispoMap[dateStr] || []),
+        ...(resaMap[dateStr] || []),
+      ].sort((a, b) => a.debut - b.debut);
+
+      const heureActuelle = (dateStr === aujourdHuiStr) ? heureActuelleMinutes : 0;
+
+      // Chercher AU MOINS un créneau disponible (short-circuit)
+      let auMoinsUnCreneau = false;
+
+      for (const plage of plagesHoraires) {
+        if (auMoinsUnCreneau) break;
+        const debutPlage = toMinutes(plage.heure_debut);
+        const finPlage = toMinutes(plage.heure_fin);
+        let curseur = Math.max(debutPlage, heureActuelle);
+
+        while (curseur + dureeAjustee <= finPlage) {
+          const finCreneau = curseur + dureeAjustee;
+          const conflit = plagesBloquees.find(p =>
+            Math.max(curseur, p.debut) < Math.min(finCreneau, p.fin)
+          );
+
+          if (!conflit) {
+            auMoinsUnCreneau = true;
+            break;
+          } else {
+            curseur = conflit.fin;
+          }
+        }
+      }
+
+      resultats.push({ date: dateStr, disponible: auMoinsUnCreneau, mode: planningMode });
+    }
+
+    return res.json(resultats);
+  } catch (err) {
+    console.error("Erreur récupération disponibilité mois :", err);
+    res.status(500).json({ error: "Erreur lors de la récupération de la disponibilité." });
+  }
+};
+
 module.exports = {
-  getCreneauxDisponibles
+  getCreneauxDisponibles,
+  getDisponibiliteMois
 };
