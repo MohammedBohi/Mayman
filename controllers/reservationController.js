@@ -1,6 +1,7 @@
 const db = require('../db');
 const { sendMail } = require('../mailer');
 const { validateMode, validateModeDepartement } = require('../utils/validations');
+const { verifierLockReservation } = require('../utils/departementLock');
 
 
 //  GET /api/reservations/mes
@@ -226,19 +227,30 @@ const creerReservation = async (req, res) => {
 
     // VÉRIFICATION CONFLITS
     const existingRes = await db.query(
-      'SELECT heure_debut, duree_totale_minutes FROM reservation WHERE jour = $1',
+      'SELECT heure_debut, duree_totale_minutes, mode, departement, nombre_personnes FROM reservation WHERE jour = $1',
       [jour]
     );
     for (const resv of existingRes.rows) {
       const [hr, mr] = resv.heure_debut.split(':').map(Number);
       const resvDebut = hr * 60 + mr;
       const resvFin = resvDebut + resv.duree_totale_minutes;
-      
+
       // Conflit si les créneaux se chevauchent (mais pas s'ils se touchent juste)
       // Ex: OK si réservation1 finit à 10h30 et réservation2 commence à 10h30
       const overlap = (debutMinutes < resvFin) && (finMinutes > resvDebut);
       if (overlap) {
         return res.status(400).json({ error: "Conflit avec une autre réservation." });
+      }
+    }
+
+    // VÉRIF RÈGLE DE CLUSTERING DÉPARTEMENTAL (DOMICILE) :
+    // empêche un client d'un dept de prendre le créneau "adjacent" à une chaîne d'un autre dept
+    if (mode === 'DOMICILE' && codeDepartement) {
+      const deptLocke = verifierLockReservation(existingRes.rows, codeDepartement, debutMinutes);
+      if (deptLocke) {
+        return res.status(400).json({
+          error: `Ce créneau est réservé au département ${deptLocke} pour optimiser les déplacements. Merci d'en choisir un autre.`
+        });
       }
     }
 

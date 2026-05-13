@@ -1,5 +1,6 @@
 const db = require('../db');
 const { validateDate } = require('../utils/validations');
+const { calculerPlagesLockees } = require('../utils/departementLock');
 
 // 🔧 Fonction utilitaire pour extraire le code département
 const extraireCodeDepartement = (departementParam) => {
@@ -164,7 +165,7 @@ const getCreneauxDisponibles = async (req, res) => {
 
     // 6. Récupérer les réservations existantes
     const reservations = await db.query(
-      'SELECT heure_debut, duree_totale_minutes FROM reservation WHERE jour = $1',
+      'SELECT heure_debut, duree_totale_minutes, mode, departement, nombre_personnes FROM reservation WHERE jour = $1',
       [dateParam]
     );
 
@@ -172,6 +173,16 @@ const getCreneauxDisponibles = async (req, res) => {
       const debut = toMinutes(row.heure_debut);
       const fin = debut + row.duree_totale_minutes;
       plagesBloquees.push({ debut, fin });
+    }
+
+    // 6bis. Règle de clustering départemental (DOMICILE uniquement) :
+    // verrouille le créneau immédiatement après une résa DOMICILE d'un autre département,
+    // sauf si la chaîne contiguë same-dept totalise déjà >= 2 personnes.
+    if (planningMode === 'DOMICILE' && codeDepartement) {
+      const locks = calculerPlagesLockees(reservations.rows, codeDepartement, dureeMinutes);
+      for (const lock of locks) {
+        plagesBloquees.push(lock);
+      }
     }
 
     // Trier les plages bloquées par ordre chronologique
@@ -219,7 +230,7 @@ const getCreneauxDisponibles = async (req, res) => {
 
 // 📅 Disponibilité batch pour un mois entier (utilisé par le calendrier)
 const getDisponibiliteMois = async (req, res) => {
-  const { debut, fin, duree } = req.query;
+  const { debut, fin, duree, departement: departementParam } = req.query;
 
   if (!debut || !fin || !duree) {
     return res.status(400).json({ error: "Paramètres 'debut', 'fin' et 'duree' requis." });
@@ -232,6 +243,7 @@ const getDisponibiliteMois = async (req, res) => {
 
   try {
     const dureeMinutes = parseInt(duree);
+    const codeDepartement = extraireCodeDepartement(departementParam);
 
     const toMinutes = (heure) => {
       const [h, m] = heure.split(":").map(Number);
@@ -243,7 +255,7 @@ const getDisponibiliteMois = async (req, res) => {
       db.query('SELECT ph.*, array_agg(json_build_object(\'heure_debut\', php.heure_debut, \'heure_fin\', php.heure_fin)) FILTER (WHERE php.id IS NOT NULL) as plages FROM planning_hebdo ph LEFT JOIN planning_hebdo_plage php ON php.planning_hebdo_id = ph.id GROUP BY ph.id'),
       db.query('SELECT pe.*, array_agg(json_build_object(\'heure_debut\', pep.heure_debut, \'heure_fin\', pep.heure_fin)) FILTER (WHERE pep.id IS NOT NULL) as plages FROM planning_exception pe LEFT JOIN planning_exception_plage pep ON pep.planning_exception_id = pe.id WHERE pe.date BETWEEN $1 AND $2 GROUP BY pe.id', [debut, fin]),
       db.query('SELECT jour, heure_debut, heure_fin FROM indisponibilite WHERE jour BETWEEN $1 AND $2', [debut, fin]),
-      db.query('SELECT jour, heure_debut, duree_totale_minutes FROM reservation WHERE jour BETWEEN $1 AND $2', [debut, fin]),
+      db.query('SELECT jour, heure_debut, duree_totale_minutes, mode, departement, nombre_personnes FROM reservation WHERE jour BETWEEN $1 AND $2', [debut, fin]),
     ]);
 
     // Indexer planning hebdo par jour_semaine
@@ -271,15 +283,18 @@ const getDisponibiliteMois = async (req, res) => {
       indispoMap[dateStr].push({ debut: toMinutes(row.heure_debut), fin: toMinutes(row.heure_fin) });
     }
 
-    // Grouper réservations par date
+    // Grouper réservations par date (avec mode/departement/personnes pour la règle de clustering)
     const resaMap = {};
+    const resaFullMap = {};
     for (const row of reservationsRes.rows) {
       const dateStr = row.jour instanceof Date
         ? row.jour.toISOString().split('T')[0]
         : String(row.jour);
       if (!resaMap[dateStr]) resaMap[dateStr] = [];
+      if (!resaFullMap[dateStr]) resaFullMap[dateStr] = [];
       const d = toMinutes(row.heure_debut);
       resaMap[dateStr].push({ debut: d, fin: d + row.duree_totale_minutes });
+      resaFullMap[dateStr].push(row);
     }
 
     // 2. Itérer sur chaque date de l'intervalle
@@ -327,7 +342,19 @@ const getDisponibiliteMois = async (req, res) => {
       const plagesBloquees = [
         ...(indispoMap[dateStr] || []),
         ...(resaMap[dateStr] || []),
-      ].sort((a, b) => a.debut - b.debut);
+      ];
+
+      // Règle de clustering départemental : si DOMICILE et dept fourni, on ajoute les locks
+      if (planningMode === 'DOMICILE' && codeDepartement) {
+        const locks = calculerPlagesLockees(
+          resaFullMap[dateStr] || [],
+          codeDepartement,
+          dureeAjustee
+        );
+        for (const lock of locks) plagesBloquees.push(lock);
+      }
+
+      plagesBloquees.sort((a, b) => a.debut - b.debut);
 
       const heureActuelle = (dateStr === aujourdHuiStr) ? heureActuelleMinutes : 0;
 
