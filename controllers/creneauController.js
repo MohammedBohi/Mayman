@@ -178,10 +178,10 @@ const getCreneauxDisponibles = async (req, res) => {
 
     // 6bis. Règle de clustering (DOMICILE uniquement) :
     // verrouille le créneau immédiatement après une résa DOMICILE d'une autre ville/dept,
-    // sauf si la chaîne contiguë same-ville/dept totalise déjà >= 2 personnes.
+    // sauf si la chaîne contiguë same-zone totalise déjà >= 2 personnes.
+    // On passe ville ET dept pour gérer correctement les anciennes résas qui n'ont pas de ville.
     if (planningMode === 'DOMICILE' && codeDepartement) {
-      const cleClient = nomVille || codeDepartement;
-      const locks = calculerPlagesLockees(reservations.rows, cleClient, dureeMinutes);
+      const locks = calculerPlagesLockees(reservations.rows, nomVille, codeDepartement, dureeMinutes);
       for (const lock of locks) {
         plagesBloquees.push(lock);
       }
@@ -347,12 +347,12 @@ const getDisponibiliteMois = async (req, res) => {
         ...(resaMap[dateStr] || []),
       ];
 
-      // Règle de clustering : si DOMICILE et dept fourni, on ajoute les locks (par ville si dispo, sinon par dept)
+      // Règle de clustering : on passe ville ET dept pour gérer les anciennes résas sans ville
       if (planningMode === 'DOMICILE' && codeDepartement) {
-        const cleClient = nomVille || codeDepartement;
         const locks = calculerPlagesLockees(
           resaFullMap[dateStr] || [],
-          cleClient,
+          nomVille,
+          codeDepartement,
           dureeAjustee
         );
         for (const lock of locks) plagesBloquees.push(lock);

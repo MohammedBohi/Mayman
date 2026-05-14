@@ -243,10 +243,10 @@ const creerReservation = async (req, res) => {
     }
 
     // VÉRIF RÈGLE DE CLUSTERING (DOMICILE) :
-    // empêche un client d'une ville/dept de prendre le créneau adjacent à une chaîne d'une autre ville/dept
+    // empêche un client d'une ville/dept de prendre le créneau adjacent à une chaîne d'une autre zone.
+    // On passe ville ET dept pour matcher correctement les anciennes résas sans ville stockée.
     if (mode === 'DOMICILE' && codeDepartement) {
-      const cleClient = nomVille || codeDepartement;
-      const cleLockee = verifierLockReservation(existingRes.rows, cleClient, debutMinutes);
+      const cleLockee = verifierLockReservation(existingRes.rows, nomVille, codeDepartement, debutMinutes);
       if (cleLockee) {
         return res.status(400).json({
           error: `Ce créneau est réservé à ${cleLockee} pour optimiser les déplacements. Merci d'en choisir un autre.`
