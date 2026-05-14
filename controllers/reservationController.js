@@ -84,33 +84,32 @@ const creerReservation = async (req, res) => {
   console.log("👉 Données reçues :", req.body);
 
   try {
-    // 🔧 EXTRACTION DU CODE DÉPARTEMENT
+    // 🔧 EXTRACTION DU CODE DÉPARTEMENT + NOM DE VILLE
     let codeDepartement = null;
+    let nomVille = null;
     if (departementParam) {
       // Si c'est un code simple (ex: "46")
       if (/^\d{2,3}$/.test(departementParam)) {
         codeDepartement = departementParam;
-      } 
+      }
       // Si c'est un JSON stringifié
       else if (typeof departementParam === 'string' && departementParam.startsWith('{')) {
         try {
           const parsed = JSON.parse(departementParam);
-          if (parsed.codePostal) {
-            codeDepartement = parsed.codePostal.substring(0, 2);
-          } else if (parsed.code) {
-            codeDepartement = parsed.code;
-          }
+          if (parsed.code_postal) codeDepartement = String(parsed.code_postal).substring(0, 2);
+          else if (parsed.codePostal) codeDepartement = String(parsed.codePostal).substring(0, 2);
+          else if (parsed.code) codeDepartement = parsed.code;
+          if (parsed.nom) nomVille = parsed.nom;
         } catch (e) {
           // Pas du JSON valide
         }
       }
       // Si c'est un objet direct
       else if (typeof departementParam === 'object') {
-        if (departementParam.codePostal) {
-          codeDepartement = departementParam.codePostal.substring(0, 2);
-        } else if (departementParam.code) {
-          codeDepartement = departementParam.code;
-        }
+        if (departementParam.code_postal) codeDepartement = String(departementParam.code_postal).substring(0, 2);
+        else if (departementParam.codePostal) codeDepartement = String(departementParam.codePostal).substring(0, 2);
+        else if (departementParam.code) codeDepartement = departementParam.code;
+        if (departementParam.nom) nomVille = departementParam.nom;
       }
       // Si c'est un code postal (ex: "46260")
       else if (/^\d{5}$/.test(departementParam)) {
@@ -243,13 +242,14 @@ const creerReservation = async (req, res) => {
       }
     }
 
-    // VÉRIF RÈGLE DE CLUSTERING DÉPARTEMENTAL (DOMICILE) :
-    // empêche un client d'un dept de prendre le créneau "adjacent" à une chaîne d'un autre dept
+    // VÉRIF RÈGLE DE CLUSTERING (DOMICILE) :
+    // empêche un client d'une ville/dept de prendre le créneau adjacent à une chaîne d'une autre ville/dept
     if (mode === 'DOMICILE' && codeDepartement) {
-      const deptLocke = verifierLockReservation(existingRes.rows, codeDepartement, debutMinutes);
-      if (deptLocke) {
+      const cleClient = nomVille || codeDepartement;
+      const cleLockee = verifierLockReservation(existingRes.rows, cleClient, debutMinutes);
+      if (cleLockee) {
         return res.status(400).json({
-          error: `Ce créneau est réservé au département ${deptLocke} pour optimiser les déplacements. Merci d'en choisir un autre.`
+          error: `Ce créneau est réservé à ${cleLockee} pour optimiser les déplacements. Merci d'en choisir un autre.`
         });
       }
     }
@@ -257,17 +257,19 @@ const creerReservation = async (req, res) => {
     tarifTotal = Number(tarifTotal);
     const nombrePersonnes = personnes.length;
 
-    // INSERTION RÉSERVATION (avec mode et nombre_personnes)
+    // INSERTION RÉSERVATION (avec mode, nombre_personnes et ville)
     const result = await db.query(`
       INSERT INTO reservation (
         utilisateurid, nom, prenom, jour, creneau, heure_debut, duree_totale_minutes,
-        adressereservation, telephone, departement, tarif, mode, nombre_personnes
+        adressereservation, telephone, departement, ville, tarif, mode, nombre_personnes
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
       RETURNING id
     `, [
       utilisateur_id, nom, prenom, jour, heure_debut, heure_debut, dureeTotale,
-      adresseReservation, telephone, mode === 'DOMICILE' ? codeDepartement : null, 
+      adresseReservation, telephone,
+      mode === 'DOMICILE' ? codeDepartement : null,
+      mode === 'DOMICILE' ? nomVille : null,
       tarifTotal, mode, nombrePersonnes
     ]);
 

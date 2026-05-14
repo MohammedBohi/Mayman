@@ -77,28 +77,27 @@ const creerReservationPourClient = async (req, res) => {
   } = req.body;
 
   try {
-    // 🔧 EXTRACTION DU CODE DÉPARTEMENT
+    // 🔧 EXTRACTION DU CODE DÉPARTEMENT + NOM DE VILLE
     let codeDepartement = null;
+    let nomVille = null;
     if (departementParam) {
       if (/^\d{2,3}$/.test(departementParam)) {
         codeDepartement = departementParam;
-      } 
+      }
       else if (typeof departementParam === 'string' && departementParam.startsWith('{')) {
         try {
           const parsed = JSON.parse(departementParam);
-          if (parsed.codePostal) {
-            codeDepartement = parsed.codePostal.substring(0, 2);
-          } else if (parsed.code) {
-            codeDepartement = parsed.code;
-          }
+          if (parsed.code_postal) codeDepartement = String(parsed.code_postal).substring(0, 2);
+          else if (parsed.codePostal) codeDepartement = String(parsed.codePostal).substring(0, 2);
+          else if (parsed.code) codeDepartement = parsed.code;
+          if (parsed.nom) nomVille = parsed.nom;
         } catch (e) {}
       }
       else if (typeof departementParam === 'object') {
-        if (departementParam.codePostal) {
-          codeDepartement = departementParam.codePostal.substring(0, 2);
-        } else if (departementParam.code) {
-          codeDepartement = departementParam.code;
-        }
+        if (departementParam.code_postal) codeDepartement = String(departementParam.code_postal).substring(0, 2);
+        else if (departementParam.codePostal) codeDepartement = String(departementParam.codePostal).substring(0, 2);
+        else if (departementParam.code) codeDepartement = departementParam.code;
+        if (departementParam.nom) nomVille = departementParam.nom;
       }
       else if (/^\d{5}$/.test(departementParam)) {
         codeDepartement = departementParam.substring(0, 2);
@@ -226,18 +225,20 @@ const creerReservationPourClient = async (req, res) => {
     tarifTotal = Number(tarifTotal);
     const nombrePersonnes = personnes.length;
 
-    // INSERTION RÉSERVATION (avec mode, nombre_personnes et email)
+    // INSERTION RÉSERVATION (avec mode, nombre_personnes, email et ville)
     const result = await db.query(`
       INSERT INTO reservation (
         utilisateurid, nom, prenom, email, jour, creneau, heure_debut, duree_totale_minutes,
-        adressereservation, telephone, departement,
+        adressereservation, telephone, departement, ville,
         tarif, mode, nombre_personnes
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
       RETURNING id
     `, [
       utilisateur_id, nom, prenom, email, jour, heure_debut, heure_debut, dureeTotale,
-      adresseReservation, telephone, mode === 'DOMICILE' ? codeDepartement : null,
+      adresseReservation, telephone,
+      mode === 'DOMICILE' ? codeDepartement : null,
+      mode === 'DOMICILE' ? nomVille : null,
       tarifTotal, mode, nombrePersonnes
     ]);
 

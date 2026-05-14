@@ -8,13 +8,17 @@ const toMinutes = (heure) => {
   return h * 60 + m;
 };
 
-// Construit la liste des chaînes contiguës same-dept à partir des réservations du jour.
-// Une chaîne = suite de résas DOMICILE qui se touchent exactement (fin de l'une = début de la suivante) ET même département.
+// Clé d'une résa pour le clustering : nom de ville si présent, sinon code département.
+// Permet de chaîner par ville (plus précis) sans casser les anciennes résas qui n'ont que le dept.
+const cleResa = (r) => (r.ville && r.ville.trim()) || r.departement;
+
+// Construit la liste des chaînes contiguës same-ville à partir des réservations du jour.
+// Une chaîne = suite de résas DOMICILE qui se touchent exactement (fin de l'une = début de la suivante) ET même clé (ville ou dept).
 function construireChaines(reservationsDuJour) {
   const resasDomicile = reservationsDuJour
-    .filter(r => r.mode === 'DOMICILE' && r.departement)
+    .filter(r => r.mode === 'DOMICILE' && cleResa(r))
     .map(r => ({
-      dept: r.departement,
+      cle: cleResa(r),
       debut: toMinutes(r.heure_debut),
       fin: toMinutes(r.heure_debut) + r.duree_totale_minutes,
       personnes: r.nombre_personnes || 1,
@@ -24,39 +28,39 @@ function construireChaines(reservationsDuJour) {
   const chaines = [];
   for (const r of resasDomicile) {
     const derniere = chaines[chaines.length - 1];
-    if (derniere && derniere.dept === r.dept && derniere.fin === r.debut) {
+    if (derniere && derniere.cle === r.cle && derniere.fin === r.debut) {
       derniere.fin = r.fin;
       derniere.personnes += r.personnes;
     } else {
-      chaines.push({ dept: r.dept, fin: r.fin, personnes: r.personnes });
+      chaines.push({ cle: r.cle, fin: r.fin, personnes: r.personnes });
     }
   }
   return chaines;
 }
 
-// Retourne les plages bloquées à appliquer pour le client en dept `codeDepartementClient`.
-// Si pas de dept (mode SALON), retourne [].
-function calculerPlagesLockees(reservationsDuJour, codeDepartementClient, dureeMinutes) {
-  if (!codeDepartementClient) return [];
+// Retourne les plages bloquées à appliquer pour le client identifié par `cleClient` (ville ou dept).
+// Si pas de clé (mode SALON), retourne [].
+function calculerPlagesLockees(reservationsDuJour, cleClient, dureeMinutes) {
+  if (!cleClient) return [];
   const chaines = construireChaines(reservationsDuJour);
   const locks = [];
   for (const ch of chaines) {
-    if (ch.personnes < 2 && ch.dept !== codeDepartementClient) {
+    if (ch.personnes < 2 && ch.cle !== cleClient) {
       locks.push({ debut: ch.fin, fin: ch.fin + dureeMinutes });
     }
   }
   return locks;
 }
 
-// Vérifie qu'un créneau (debutMinutes, finMinutes) en dept `codeDepartementClient`
+// Vérifie qu'un créneau (debutMinutes) pour le client `cleClient` (ville ou dept)
 // ne tombe pas dans une plage verrouillée par une autre chaîne.
-// Retourne null si OK, sinon le dept locké.
-function verifierLockReservation(reservationsDuJour, codeDepartementClient, debutMinutes) {
-  if (!codeDepartementClient) return null;
+// Retourne null si OK, sinon la clé lockée.
+function verifierLockReservation(reservationsDuJour, cleClient, debutMinutes) {
+  if (!cleClient) return null;
   const chaines = construireChaines(reservationsDuJour);
   for (const ch of chaines) {
-    if (ch.personnes < 2 && ch.dept !== codeDepartementClient && ch.fin === debutMinutes) {
-      return ch.dept;
+    if (ch.personnes < 2 && ch.cle !== cleClient && ch.fin === debutMinutes) {
+      return ch.cle;
     }
   }
   return null;

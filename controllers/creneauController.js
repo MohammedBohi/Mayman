@@ -35,8 +35,8 @@ const extraireCodeDepartement = (departementParam) => {
 const getCreneauxDisponibles = async (req, res) => {
   // Accepter "date" ou "jour" pour rétrocompatibilité
   const dateParam = req.query.date || req.query.jour;
-  const { duree, mode: modeParam, departement: departementParam } = req.query;
-  
+  const { duree, mode: modeParam, departement: departementParam, ville: villeParam } = req.query;
+
   // Validations des paramètres
   if (!dateParam || !duree) {
     return res.status(400).json({ error: "Paramètres 'date' et 'duree' requis." });
@@ -49,6 +49,7 @@ const getCreneauxDisponibles = async (req, res) => {
 
   try {
     const codeDepartement = extraireCodeDepartement(departementParam);
+    const nomVille = villeParam && String(villeParam).trim() ? String(villeParam).trim() : null;
     let dureeMinutes = parseInt(duree);
 
     const toMinutes = (heure) => {
@@ -165,7 +166,7 @@ const getCreneauxDisponibles = async (req, res) => {
 
     // 6. Récupérer les réservations existantes
     const reservations = await db.query(
-      'SELECT heure_debut, duree_totale_minutes, mode, departement, nombre_personnes FROM reservation WHERE jour = $1',
+      'SELECT heure_debut, duree_totale_minutes, mode, departement, ville, nombre_personnes FROM reservation WHERE jour = $1',
       [dateParam]
     );
 
@@ -175,11 +176,12 @@ const getCreneauxDisponibles = async (req, res) => {
       plagesBloquees.push({ debut, fin });
     }
 
-    // 6bis. Règle de clustering départemental (DOMICILE uniquement) :
-    // verrouille le créneau immédiatement après une résa DOMICILE d'un autre département,
-    // sauf si la chaîne contiguë same-dept totalise déjà >= 2 personnes.
+    // 6bis. Règle de clustering (DOMICILE uniquement) :
+    // verrouille le créneau immédiatement après une résa DOMICILE d'une autre ville/dept,
+    // sauf si la chaîne contiguë same-ville/dept totalise déjà >= 2 personnes.
     if (planningMode === 'DOMICILE' && codeDepartement) {
-      const locks = calculerPlagesLockees(reservations.rows, codeDepartement, dureeMinutes);
+      const cleClient = nomVille || codeDepartement;
+      const locks = calculerPlagesLockees(reservations.rows, cleClient, dureeMinutes);
       for (const lock of locks) {
         plagesBloquees.push(lock);
       }
@@ -230,7 +232,7 @@ const getCreneauxDisponibles = async (req, res) => {
 
 // 📅 Disponibilité batch pour un mois entier (utilisé par le calendrier)
 const getDisponibiliteMois = async (req, res) => {
-  const { debut, fin, duree, departement: departementParam } = req.query;
+  const { debut, fin, duree, departement: departementParam, ville: villeParam } = req.query;
 
   if (!debut || !fin || !duree) {
     return res.status(400).json({ error: "Paramètres 'debut', 'fin' et 'duree' requis." });
@@ -244,6 +246,7 @@ const getDisponibiliteMois = async (req, res) => {
   try {
     const dureeMinutes = parseInt(duree);
     const codeDepartement = extraireCodeDepartement(departementParam);
+    const nomVille = villeParam && String(villeParam).trim() ? String(villeParam).trim() : null;
 
     const toMinutes = (heure) => {
       const [h, m] = heure.split(":").map(Number);
@@ -255,7 +258,7 @@ const getDisponibiliteMois = async (req, res) => {
       db.query('SELECT ph.*, array_agg(json_build_object(\'heure_debut\', php.heure_debut, \'heure_fin\', php.heure_fin)) FILTER (WHERE php.id IS NOT NULL) as plages FROM planning_hebdo ph LEFT JOIN planning_hebdo_plage php ON php.planning_hebdo_id = ph.id GROUP BY ph.id'),
       db.query('SELECT pe.*, array_agg(json_build_object(\'heure_debut\', pep.heure_debut, \'heure_fin\', pep.heure_fin)) FILTER (WHERE pep.id IS NOT NULL) as plages FROM planning_exception pe LEFT JOIN planning_exception_plage pep ON pep.planning_exception_id = pe.id WHERE pe.date BETWEEN $1 AND $2 GROUP BY pe.id', [debut, fin]),
       db.query('SELECT jour, heure_debut, heure_fin FROM indisponibilite WHERE jour BETWEEN $1 AND $2', [debut, fin]),
-      db.query('SELECT jour, heure_debut, duree_totale_minutes, mode, departement, nombre_personnes FROM reservation WHERE jour BETWEEN $1 AND $2', [debut, fin]),
+      db.query('SELECT jour, heure_debut, duree_totale_minutes, mode, departement, ville, nombre_personnes FROM reservation WHERE jour BETWEEN $1 AND $2', [debut, fin]),
     ]);
 
     // Indexer planning hebdo par jour_semaine
@@ -344,11 +347,12 @@ const getDisponibiliteMois = async (req, res) => {
         ...(resaMap[dateStr] || []),
       ];
 
-      // Règle de clustering départemental : si DOMICILE et dept fourni, on ajoute les locks
+      // Règle de clustering : si DOMICILE et dept fourni, on ajoute les locks (par ville si dispo, sinon par dept)
       if (planningMode === 'DOMICILE' && codeDepartement) {
+        const cleClient = nomVille || codeDepartement;
         const locks = calculerPlagesLockees(
           resaFullMap[dateStr] || [],
-          codeDepartement,
+          cleClient,
           dureeAjustee
         );
         for (const lock of locks) plagesBloquees.push(lock);
