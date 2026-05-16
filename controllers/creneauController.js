@@ -140,9 +140,11 @@ const getCreneauxDisponibles = async (req, res) => {
       }
     }
 
-    // 3. Ajouter 20 min de déplacement pour le mode DOMICILE
+    // 3. Buffer entre RDV : +20 min en DOMICILE (déplacement), +15 min en SALON (rotation)
     if (planningMode === 'DOMICILE') {
       dureeMinutes += 20;
+    } else if (planningMode === 'SALON') {
+      dureeMinutes += 15;
     }
 
     // 4. Générer les créneaux possibles à partir des plages horaires
@@ -338,8 +340,12 @@ const getDisponibiliteMois = async (req, res) => {
         continue;
       }
 
-      // Durée ajustée pour DOMICILE
-      const dureeAjustee = planningMode === 'DOMICILE' ? dureeMinutes + 20 : dureeMinutes;
+      // Durée ajustée : +20 min en DOMICILE (déplacement), +15 min en SALON (rotation)
+      const dureeAjustee = planningMode === 'DOMICILE'
+        ? dureeMinutes + 20
+        : planningMode === 'SALON'
+          ? dureeMinutes + 15
+          : dureeMinutes;
 
       // Construire les plages bloquées pour cette date
       const plagesBloquees = [

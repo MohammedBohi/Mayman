@@ -215,9 +215,11 @@ const creerReservation = async (req, res) => {
       tarifTotal += parseFloat(prestation.prix) + (avecSoin ? 10 : 0);
     }
 
-    // +20 min uniquement pour le mode DOMICILE (déplacement)
+    // Buffer entre RDV : +20 min en DOMICILE (déplacement), +15 min en SALON (rotation)
     if (mode === 'DOMICILE') {
       dureeTotale += 20;
+    } else if (mode === 'SALON') {
+      dureeTotale += 15;
     }
 
     const [h, m] = heure_debut.split(':').map(Number);
