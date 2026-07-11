@@ -8,25 +8,28 @@ const getReservationsParJour = async (req, res) => {
 
     try {
      const result = await db.query(`
-    SELECT DISTINCT ON (r.id)
-        r.*,
-        phd.nom AS departement_nom,
-        phd.code_postal AS departement_code,
-        COALESCE(
-            (SELECT JSON_AGG(
-                JSON_BUILD_OBJECT(
-                    'nom', rp2.nom,
-                    'prenom', rp2.prenom,
-                    'prestation_id', rp2.prestation_id,
-                    'avec_soin', rp2.avec_soin
-                )
-            ) FROM reservation_personne rp2 WHERE rp2.reservation_id = r.id),
-            '[]'
-        ) AS personnes
-    FROM reservation r
-    LEFT JOIN planning_hebdo_departement phd ON (phd.code_postal LIKE r.departement || '%' OR phd.code_postal = r.departement)
-    WHERE r.jour = $1
-    ORDER BY r.id, r.heure_debut ASC
+    SELECT * FROM (
+        SELECT DISTINCT ON (r.id)
+            r.*,
+            phd.nom AS departement_nom,
+            phd.code_postal AS departement_code,
+            COALESCE(
+                (SELECT JSON_AGG(
+                    JSON_BUILD_OBJECT(
+                        'nom', rp2.nom,
+                        'prenom', rp2.prenom,
+                        'prestation_id', rp2.prestation_id,
+                        'avec_soin', rp2.avec_soin
+                    )
+                ) FROM reservation_personne rp2 WHERE rp2.reservation_id = r.id),
+                '[]'
+            ) AS personnes
+        FROM reservation r
+        LEFT JOIN planning_hebdo_departement phd ON (phd.code_postal LIKE r.departement || '%' OR phd.code_postal = r.departement)
+        WHERE r.jour = $1
+        ORDER BY r.id
+    ) sub
+    ORDER BY sub.heure_debut ASC
 `, [jour]);
         res.json(result.rows);
     } catch (error) {
