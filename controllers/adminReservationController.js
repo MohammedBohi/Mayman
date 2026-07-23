@@ -2,6 +2,9 @@ const db = require('../db');
 const { sendMail } = require('../mailer');
 const { validateMode, validateModeDepartement } = require('../utils/validations');
 
+// Supplément « frais de déplacement » appliqué aux prestations à domicile, par personne
+const SUPPLEMENT_DOMICILE = 2;
+
 const getReservationsParJour = async (req, res) => {
     const { jour } = req.query;
     if (!jour) return res.status(400).json({ error: "Paramètre 'jour' requis." });
@@ -201,6 +204,11 @@ const creerReservationPourClient = async (req, res) => {
       tarifTotal += parseFloat(prestation.prix) + (avecSoin ? 10 : 0);
     }
 
+    // Supplément déplacement à domicile : 2 € par personne (frais de déplacement)
+    if (mode === 'DOMICILE') {
+      tarifTotal += SUPPLEMENT_DOMICILE * personnes.length;
+    }
+
     // Buffer entre RDV : +20 min en DOMICILE (déplacement), +15 min en SALON (rotation)
     if (mode === 'DOMICILE') {
       dureeTotale += 20;
@@ -278,6 +286,9 @@ const creerReservationPourClient = async (req, res) => {
     }).join('\n');
 
     const modeTexte = mode === 'SALON' ? '🏠 Au salon' : `📍 À domicile (${codeDepartement || 'département'})`;
+    const ligneDeplacement = mode === 'DOMICILE'
+      ? `🚗 Frais de déplacement : ${(SUPPLEMENT_DOMICILE * nombrePersonnes).toFixed(2)} € (${SUPPLEMENT_DOMICILE} €/pers.)\n`
+      : '';
 
     const contenuMail = `
 Bonjour ${nom} ${prenom},
@@ -288,7 +299,7 @@ Une réservation a été créée pour vous par l'administrateur.
 🕒 Heure : ${heure_debut} → ${heureFin}
 ${modeTexte}
 ${resumePersonnes}
-💰 Tarif total : ${tarifTotal} €
+${ligneDeplacement}💰 Tarif total : ${tarifTotal} €
 📍 Adresse : ${adresseReservation}
 📞 Tel : ${telephone}
     `;
