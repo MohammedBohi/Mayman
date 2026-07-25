@@ -23,7 +23,7 @@ const createPrestation = async (req, res) => {
     res.status(201).json({ message: '✅ Prestation créée.', prestation: result.rows[0] });
   } catch (error) {
     console.error('Erreur createPrestation :', error);
-    res.status(500).json({ error: 'Erreur lors de la création de la prestation.' });
+    res.status(500).json({ error: 'Erreur lors de la création de la prestation.', details: error.message });
   }
 };
 
@@ -51,7 +51,7 @@ const updatePrestation = async (req, res) => {
     res.json({ message: '✏️ Prestation mise à jour.', prestation: result.rows[0] });
   } catch (error) {
     console.error('Erreur updatePrestation :', error);
-    res.status(500).json({ error: 'Erreur lors de la modification de la prestation.' });
+    res.status(500).json({ error: 'Erreur lors de la modification de la prestation.', details: error.message });
   }
 };
 
