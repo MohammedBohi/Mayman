@@ -1,6 +1,7 @@
 const db = require('../db');
 const { validateDate } = require('../utils/validations');
 const { calculerPlagesLockees } = require('../utils/departementLock');
+const { BUFFER_SALON, BUFFER_DOMICILE } = require('../utils/buffers');
 
 // 🔧 Fonction utilitaire pour extraire le code département
 const extraireCodeDepartement = (departementParam) => {
@@ -140,11 +141,11 @@ const getCreneauxDisponibles = async (req, res) => {
       }
     }
 
-    // 3. Buffer entre RDV : +20 min en DOMICILE (déplacement), +15 min en SALON (rotation)
+    // 3. Buffer entre RDV : valeurs partagées avec la création (utils/buffers.js)
     if (planningMode === 'DOMICILE') {
-      dureeMinutes += 20;
+      dureeMinutes += BUFFER_DOMICILE;
     } else if (planningMode === 'SALON') {
-      dureeMinutes += 15;
+      dureeMinutes += BUFFER_SALON;
     }
 
     // 4. Générer les créneaux possibles à partir des plages horaires
@@ -340,11 +341,11 @@ const getDisponibiliteMois = async (req, res) => {
         continue;
       }
 
-      // Durée ajustée : +20 min en DOMICILE (déplacement), +15 min en SALON (rotation)
+      // Durée ajustée : buffer partagé avec la création (utils/buffers.js)
       const dureeAjustee = planningMode === 'DOMICILE'
-        ? dureeMinutes + 20
+        ? dureeMinutes + BUFFER_DOMICILE
         : planningMode === 'SALON'
-          ? dureeMinutes + 15
+          ? dureeMinutes + BUFFER_SALON
           : dureeMinutes;
 
       // Construire les plages bloquées pour cette date

@@ -1,6 +1,7 @@
 const db = require('../db');
 const { sendMail } = require('../mailer');
 const { validateMode, validateModeDepartement } = require('../utils/validations');
+const { BUFFER_SALON, BUFFER_DOMICILE } = require('../utils/buffers');
 
 // Supplément « frais de déplacement » appliqué aux prestations à domicile, par personne
 const SUPPLEMENT_DOMICILE = 2;
@@ -209,11 +210,11 @@ const creerReservationPourClient = async (req, res) => {
       tarifTotal += SUPPLEMENT_DOMICILE * personnes.length;
     }
 
-    // Buffer entre RDV : +20 min en DOMICILE (déplacement), +20 min en SALON (15 rotation + 5)
+    // Buffer entre RDV : valeurs partagées avec l'affichage des créneaux (utils/buffers.js)
     if (mode === 'DOMICILE') {
-      dureeTotale += 20;
+      dureeTotale += BUFFER_DOMICILE;
     } else if (mode === 'SALON') {
-      dureeTotale += 20;
+      dureeTotale += BUFFER_SALON;
     }
 
     const [h, m] = heure_debut.split(':').map(Number);
